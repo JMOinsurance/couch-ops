@@ -29,6 +29,11 @@ export async function productAvailability(productId) {
     [productId]
   );
 
+  return computeAvailability(productId, pieceTypes, invRows);
+}
+
+/** Pure in-memory version of the math above — takes already-fetched rows so callers covering many products at once (allProductsAvailability) can do it in a handful of queries total instead of a couple round-trips per product. */
+function computeAvailability(productId, pieceTypes, invRows) {
   const totalsByPiece = {};   // piece_type_id -> total qty (both locations)
   const byLocationByPiece = {}; // piece_type_id -> { Dawson: n, Grant: n }
   for (const pt of pieceTypes) {
@@ -98,10 +103,37 @@ export async function productAvailability(productId) {
   };
 }
 
-/** Availability summary across every active product — the core dashboard feed. */
+/** Availability summary across every active product — the core dashboard feed. A handful of bulk queries total, not per-product, so this stays fast against a remote database. */
 export async function allProductsAvailability() {
   const products = await db.all(
     `SELECT id, model, color, sku, display_name, active, rules_confidence, notes FROM products ORDER BY model, color`
   );
-  return Promise.all(products.map(async p => ({ product: p, availability: await productAvailability(p.id) })));
+  if (products.length === 0) return [];
+  const productIds = products.map(p => p.id);
+  const placeholders = productIds.map(() => '?').join(',');
+
+  const allPieceTypes = await db.all(
+    `SELECT id, product_id, piece_number, label, requirement, full_sku FROM piece_types WHERE product_id IN (${placeholders}) ORDER BY piece_number`,
+    productIds
+  );
+  const pieceTypeIds = allPieceTypes.map(pt => pt.id);
+  let allInvRows = [];
+  if (pieceTypeIds.length) {
+    const ph2 = pieceTypeIds.map(() => '?').join(',');
+    allInvRows = await db.all(
+      `SELECT piece_type_id, location, quantity FROM inventory WHERE piece_type_id IN (${ph2})`,
+      pieceTypeIds
+    );
+  }
+
+  const pieceTypesByProduct = {};
+  for (const pt of allPieceTypes) (pieceTypesByProduct[pt.product_id] ||= []).push(pt);
+  const invByPiece = {};
+  for (const row of allInvRows) (invByPiece[row.piece_type_id] ||= []).push(row);
+
+  return products.map(p => {
+    const pieceTypes = pieceTypesByProduct[p.id] || [];
+    const invRows = pieceTypes.flatMap(pt => invByPiece[pt.id] || []);
+    return { product: p, availability: computeAvailability(p.id, pieceTypes, invRows) };
+  });
 }

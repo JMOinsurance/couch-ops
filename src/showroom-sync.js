@@ -36,24 +36,43 @@ const PIECE_KEY = {
 
 /** Real per-model, per-color, per-piece box counts (Dawson + Grant combined), for the 5 showroom-tracked lines only. */
 export async function buildLiveInventory() {
-  const live = {};
-  for (const model of TRACKED_MODELS) {
-    const products = await db.all(`SELECT * FROM products WHERE model = ? AND active = 1`, [model]);
-    const modelData = {};
-    for (const p of products) {
-      const colorKey = COLOR_KEY[p.color];
-      if (!colorKey) continue; // unrecognized color code — skip rather than guess
-      const pieces = await db.all(`SELECT id, label FROM piece_types WHERE product_id = ?`, [p.id]);
-      const counts = {};
-      for (const pt of pieces) {
-        const key = PIECE_KEY[pt.label];
-        if (!key) continue; // unconfirmed/unusual piece label — skip rather than guess
-        const row = await db.get(`SELECT COALESCE(SUM(quantity),0) s FROM inventory WHERE piece_type_id = ?`, [pt.id]);
-        counts[key] = (counts[key] || 0) + row.s;
-      }
-      modelData[colorKey] = counts;
+  // Bulk-fetch everything up front (3 queries total, not per-product/per-piece)
+  // — this runs against the real remote Turso database, so avoiding a
+  // round-trip-per-piece-type is the difference between an instant sync and
+  // one slow enough to matter on a schedule.
+  const placeholders = TRACKED_MODELS.map(() => '?').join(',');
+  const products = await db.all(`SELECT * FROM products WHERE model IN (${placeholders}) AND active = 1`, TRACKED_MODELS);
+  const productIds = products.map(p => p.id);
+
+  let pieceTypes = [];
+  let invRows = [];
+  if (productIds.length) {
+    const ph2 = productIds.map(() => '?').join(',');
+    pieceTypes = await db.all(`SELECT id, product_id, label FROM piece_types WHERE product_id IN (${ph2})`, productIds);
+    const pieceTypeIds = pieceTypes.map(pt => pt.id);
+    if (pieceTypeIds.length) {
+      const ph3 = pieceTypeIds.map(() => '?').join(',');
+      invRows = await db.all(`SELECT piece_type_id, quantity FROM inventory WHERE piece_type_id IN (${ph3})`, pieceTypeIds);
     }
-    live[model] = modelData;
+  }
+
+  const qtyByPiece = {};
+  for (const row of invRows) qtyByPiece[row.piece_type_id] = (qtyByPiece[row.piece_type_id] || 0) + row.quantity;
+  const pieceTypesByProduct = {};
+  for (const pt of pieceTypes) (pieceTypesByProduct[pt.product_id] ||= []).push(pt);
+
+  const live = {};
+  for (const model of TRACKED_MODELS) live[model] = {};
+  for (const p of products) {
+    const colorKey = COLOR_KEY[p.color];
+    if (!colorKey) continue; // unrecognized color code — skip rather than guess
+    const counts = {};
+    for (const pt of pieceTypesByProduct[p.id] || []) {
+      const key = PIECE_KEY[pt.label];
+      if (!key) continue; // unconfirmed/unusual piece label — skip rather than guess
+      counts[key] = (counts[key] || 0) + (qtyByPiece[pt.id] || 0);
+    }
+    live[p.model][colorKey] = counts;
   }
   return live;
 }
