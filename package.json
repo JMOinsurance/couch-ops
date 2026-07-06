@@ -8,10 +8,10 @@
     "node": ">=22.5.0"
   },
   "scripts": {
-    "start": "node --env-file=.env src/server.js",
-    "dev": "node --env-file=.env --watch src/server.js",
-    "import-legacy": "node --env-file=.env scripts/import-legacy-data.js",
-    "reset-db": "node --env-file=.env scripts/reset-db.js"
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "dev": "node --env-file-if-exists=.env --watch src/server.js",
+    "import-legacy": "node --env-file-if-exists=.env scripts/import-legacy-data.js",
+    "reset-db": "node --env-file-if-exists=.env scripts/reset-db.js"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0"
