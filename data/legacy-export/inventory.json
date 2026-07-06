@@ -1,0 +1,522 @@
+[
+  {
+    "full_sku": "120WE-2",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "120WE-3",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "120WE-4",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "120WE-5",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "120WE-6",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "120BK-2",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "120BK-3",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "120BK-4",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "120BK-5",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "120BK-6",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "120BE-2",
+    "dawson_qty": 0,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "120BE-3",
+    "dawson_qty": 0,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "120BE-4",
+    "dawson_qty": 0,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "120BE-5",
+    "dawson_qty": 0,
+    "grant_qty": 2
+  },
+  {
+    "full_sku": "120BE-6",
+    "dawson_qty": 0,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "121WE-1",
+    "dawson_qty": 0,
+    "grant_qty": 6
+  },
+  {
+    "full_sku": "121WE-2",
+    "dawson_qty": 0,
+    "grant_qty": 2
+  },
+  {
+    "full_sku": "121WE-3",
+    "dawson_qty": 0,
+    "grant_qty": 2
+  },
+  {
+    "full_sku": "121BK-1",
+    "dawson_qty": 1,
+    "grant_qty": 3
+  },
+  {
+    "full_sku": "121BK-2",
+    "dawson_qty": 7,
+    "grant_qty": 2
+  },
+  {
+    "full_sku": "121BK-3",
+    "dawson_qty": 1,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "121LG-1",
+    "dawson_qty": 0,
+    "grant_qty": 2
+  },
+  {
+    "full_sku": "121LG-2",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "121LG-3",
+    "dawson_qty": 0,
+    "grant_qty": 2
+  },
+  {
+    "full_sku": "121KH-1",
+    "dawson_qty": 3,
+    "grant_qty": 4
+  },
+  {
+    "full_sku": "121KH-2",
+    "dawson_qty": 2,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "121KH-3",
+    "dawson_qty": 1,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "140BK-1",
+    "dawson_qty": 1,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "140BK-2",
+    "dawson_qty": 2,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "140BK-3",
+    "dawson_qty": 3,
+    "grant_qty": 2
+  },
+  {
+    "full_sku": "140BK-4",
+    "dawson_qty": 3,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "140BK-5",
+    "dawson_qty": 0,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "140LG-1",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "140LG-2",
+    "dawson_qty": 1,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "140LG-3",
+    "dawson_qty": 1,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "140LG-4",
+    "dawson_qty": 1,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "140LG-5",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "140WE-1",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "140WE-2",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "140WE-3",
+    "dawson_qty": 0,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "140WE-4",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "140WE-5",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "140KH-1",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "140KH-2",
+    "dawson_qty": 2,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "140KH-3",
+    "dawson_qty": 2,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "140KH-4",
+    "dawson_qty": 1,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "140KH-5",
+    "dawson_qty": 1,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "141BK-1",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "141BK-2",
+    "dawson_qty": 1,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "141BK-3",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "141LG-1",
+    "dawson_qty": 3,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "141LG-2",
+    "dawson_qty": 2,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "141LG-3",
+    "dawson_qty": 1,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "141BE-1",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "141BE-2",
+    "dawson_qty": 0,
+    "grant_qty": 2
+  },
+  {
+    "full_sku": "141BE-3",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "141TA-1",
+    "dawson_qty": 0,
+    "grant_qty": 2
+  },
+  {
+    "full_sku": "141TA-2",
+    "dawson_qty": 0,
+    "grant_qty": 2
+  },
+  {
+    "full_sku": "141TA-3",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "142LG-1",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "142LG-2",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "142LG-3",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "142BK-1",
+    "dawson_qty": 3,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "142BK-2",
+    "dawson_qty": 2,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "142BK-3",
+    "dawson_qty": 1,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "142BE-1",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "142BE-2",
+    "dawson_qty": 1,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "142BE-3",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "142KH-1",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "142KH-2",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "142KH-3",
+    "dawson_qty": 1,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "143BE-1",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "143BE-2",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "143BE-3",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "143BE-4",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "120OR-2",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "120OR-3",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "120OR-4",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "120OR-5",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "120OR-6",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "151GY-1",
+    "dawson_qty": 0,
+    "grant_qty": 2
+  },
+  {
+    "full_sku": "151GY-2",
+    "dawson_qty": 0,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "151GY-3",
+    "dawson_qty": 0,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "151GY-4",
+    "dawson_qty": 0,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "151GY-5",
+    "dawson_qty": 0,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "151GY-6",
+    "dawson_qty": 0,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "151BE-1",
+    "dawson_qty": 0,
+    "grant_qty": 2
+  },
+  {
+    "full_sku": "151BE-2",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "151BE-3",
+    "dawson_qty": 0,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "151BE-4",
+    "dawson_qty": 0,
+    "grant_qty": 2
+  },
+  {
+    "full_sku": "151BE-5",
+    "dawson_qty": 0,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "151BE-6",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "151KH-1",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "151KH-2",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "151KH-3",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "151KH-4",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "151KH-5",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "151KH-6",
+    "dawson_qty": 0,
+    "grant_qty": 1
+  },
+  {
+    "full_sku": "151BU-1",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "151BU-2",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "151BU-3",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "151BU-4",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "151BU-5",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  },
+  {
+    "full_sku": "151BU-6",
+    "dawson_qty": 0,
+    "grant_qty": 0
+  }
+]

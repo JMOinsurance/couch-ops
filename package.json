@@ -1,0 +1,19 @@
+{
+  "name": "couch-ops",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Internal operations tool for the couch business (inventory, trips, sales).",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node --env-file=.env src/server.js",
+    "dev": "node --env-file=.env --watch src/server.js",
+    "import-legacy": "node --env-file=.env scripts/import-legacy-data.js",
+    "reset-db": "node --env-file=.env scripts/reset-db.js"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.14.0"
+  }
+}
