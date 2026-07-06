@@ -25,7 +25,9 @@ body { margin: 0; background: var(--bg); color: var(--ink); }
 
 .topbar { display: flex; align-items: center; gap: .5rem; padding: .75rem 1rem; background: var(--card); border-bottom: 1px solid var(--line); flex-wrap: wrap; position: sticky; top: 0; z-index: 10; }
 .topbar .brand { font-weight: 700; margin-right: .5rem; }
+.topbar-row { display: none; } /* only meaningful on mobile — see media query below */
 .topbar nav { display: flex; gap: .25rem; flex: 1; flex-wrap: wrap; }
+.nav-toggle { display: none; }
 .topbar nav a { padding: .4rem .7rem; border-radius: 8px; text-decoration: none; color: var(--ink); font-size: .95rem; }
 .topbar nav a.active { background: var(--accent); color: white; }
 .logout-form { display: flex; align-items: center; gap: .5rem; margin: 0; }
@@ -133,4 +135,13 @@ form.inline-form { margin: 0; }
   tr { background: var(--card); border: 1px solid var(--line); border-radius: 10px; margin-bottom: .6rem; padding: .4rem .2rem; }
   td { border-bottom: none; display: flex; justify-content: space-between; gap: .5rem; }
   td::before { content: attr(data-label); color: var(--muted); font-size: .78rem; font-weight: 600; }
+}
+
+@media (max-width: 640px) {
+  .topbar { flex-direction: column; align-items: stretch; padding: .6rem .8rem; }
+  .topbar-row { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+  .nav-toggle { display: block; background: var(--line); color: var(--ink); border: none; border-radius: 8px; padding: .4rem .7rem; font-size: .9rem; cursor: pointer; }
+  .topbar nav { display: none; flex-direction: column; width: 100%; flex: none; gap: 0; margin-top: .5rem; }
+  .topbar nav.open { display: flex; }
+  .topbar nav a { padding: .8rem .5rem; border-bottom: 1px solid var(--line); border-radius: 0; }
 }

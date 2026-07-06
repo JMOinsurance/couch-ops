@@ -47,15 +47,34 @@ ${PWA_HEAD}
 <body>
 ${user ? `
 <header class="topbar">
-  <div class="brand">Redefined Couches</div>
-  <nav>
+  <div class="topbar-row">
+    <div class="brand">Redefined Couches</div>
+    <button type="button" class="nav-toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false">☰ Menu</button>
+  </div>
+  <nav id="topbar-nav">
     ${nav.map(([href, label]) => `<a href="${href}" class="${active === href ? 'active' : ''}">${label}</a>`).join('')}
   </nav>
   <form method="post" action="/logout" class="logout-form">
     <span class="who">${esc(user.name)}</span>
     <button type="submit">Switch</button>
   </form>
-</header>` : ''}
+</header>
+<script>
+  (function() {
+    var btn = document.getElementById('nav-toggle');
+    var nav = document.getElementById('topbar-nav');
+    if (!btn || !nav) return;
+    btn.addEventListener('click', function() {
+      var open = nav.classList.toggle('open');
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    // Collapse the menu again once a link is tapped, so it doesn't stay open
+    // covering the page you just navigated to.
+    nav.addEventListener('click', function(e) {
+      if (e.target.tagName === 'A') { nav.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); }
+    });
+  })();
+</script>` : ''}
 <main class="wrap ${wide ? 'wide' : ''}">
 ${body}
 </main>
