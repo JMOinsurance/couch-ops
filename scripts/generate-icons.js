@@ -1,3 +1,9 @@
+// SUPERSEDED — the app's icons are now generated from a real product photo
+// ("REDEFINED COUCHES" branded shot of the grey sectional) instead of this
+// hand-drawn silhouette. See scripts/generate-icons.py, which resizes
+// public/logo-source.jpg down to each icon size with Pillow. Kept here for
+// history / in case we ever want to fall back to a drawn icon again.
+//
 // Generates the iPhone/Android home-screen icons as real PNG files, with no
 // image library — just a hand-rolled PNG encoder on top of Node's built-in
 // zlib. Draws a simple couch silhouette on a solid accent-color square (iOS

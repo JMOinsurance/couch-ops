@@ -107,7 +107,11 @@ async function handleHome(req, res, user) {
         <div class="colorname">${esc(p.colorName)}</div>
         <div class="stock ${p.total === 0 ? 'out' : p.total <= 2 ? 'low' : ''}" onclick="toggleStock(event, 'home_${p.id}')">${p.total} box${p.total === 1 ? '' : 'es'} on hand ▾</div>
         <div class="stock-breakdown" id="breakdown_home_${p.id}">
-          ${p.pieces.map(pt => `<div>${esc(pt.label)}: D ${pt.byLocation.Dawson} · G ${pt.byLocation.Grant}</div>`).join('')}
+          ${p.pieces.map(pt => `
+          <div class="stock-breakdown-row">
+            <span class="sb-piece">${esc(pt.label)}</span>
+            <span class="sb-counts"><span class="sb-who">D</span><span class="sb-count">${pt.byLocation.Dawson}</span><span class="sb-who">G</span><span class="sb-count">${pt.byLocation.Grant}</span></span>
+          </div>`).join('')}
         </div>
       </a>
     `).join('')}
@@ -440,6 +444,11 @@ async function handleSaleSubmit(req, res, user, productId) {
   const allTimeProfit = (await profitSummary()).totalProfit;
   const profitDelta = allTimeProfit - priorProfit;
 
+  // Stock just changed — push fresh numbers to the public showroom now
+  // (fire-and-forget; the page never waits on GitHub, and any failure shows
+  // on the Dashboard's sync card).
+  syncShowroomInventory().catch(() => {});
+
   const body = `
     <div class="notice" style="background:#e3f5ec;border-color:#b9e3cc;color:#0f5c3d;">
       <strong>💰 Sale logged.</strong> ${product.sku} — ${money(basePriceNum)} base${deliveryFeeNum > 0 ? `, plus ${money(deliveryFeeNum)} delivery ${whoLabel(form.delivery_by)}` : ''}${assemblyFeeNum > 0 ? `, plus ${money(assemblyFeeNum)} assembly ${whoLabel(form.assembly_by)}` : ''}. Inventory updated automatically.
@@ -601,6 +610,10 @@ async function handleAdjustInventoryPost(req, res, user, productId) {
     <a href="/inventory" class="btn" style="display:inline-block;text-decoration:none;margin-right:.5rem;">Back to inventory</a>
     <a href="/inventory/adjust/${productId}" class="btn" style="display:inline-block;text-decoration:none;background:var(--line);color:var(--ink);">Adjust again</a>
   `;
+  // Stock just changed — push fresh numbers to the public showroom now
+  // (fire-and-forget; the page never waits on GitHub, and any failure shows
+  // on the Dashboard's sync card).
+  syncShowroomInventory().catch(() => {});
   sendHtml(res, 200, layout({ title: 'Counts updated', user, active: '/inventory', body }));
 }
 
@@ -621,7 +634,7 @@ async function handleDashboard(req, res, user, query) {
   const monthAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
   const grossThisMonth = (await db.get(`SELECT COALESCE(SUM(base_price + delivery_fee + assembly_fee), 0) s FROM sales WHERE date >= ?`, [monthAgo])).s;
   const salesThisMonth = (await db.get(`SELECT COUNT(*) c FROM sales WHERE date >= ?`, [monthAgo])).c;
-  const owing = (await db.get(`SELECT COALESCE(SUM(base_price + delivery_fee + assembly_fee - deposit_amount), 0) s FROM sales WHERE payment_status = 'Owing'`)).s;
+  const owing = (await db.get(`SELECT COALESCE(SUM(base_price + delivery_fee + assembly_fee - COALESCE(deposit_amount, 0)), 0) s FROM sales WHERE payment_status IN ('Owing', 'Deposit')`)).s;
 
   const results = (await allProductsAvailability()).filter(r => r.product.active);
   const outOfStock = results.filter(r => r.availability.totalBoxesOnHand === 0);
@@ -635,7 +648,7 @@ async function handleDashboard(req, res, user, query) {
   const byColor = await salesByColor();
   const last5 = await recentSales(5);
   const trips = (await perTripStats()).slice().reverse(); // newest first
-  const totalCost = profit.totalTripCost + profit.totalReceiptCost;
+  const totalCost = profit.totalTripCost + profit.totalGasCost + profit.totalReceiptCost;
   const summaries = await activeProductSummaries();
 
   const body = `
@@ -671,7 +684,11 @@ async function handleDashboard(req, res, user, query) {
           <div class="colorname">${esc(p.colorName)}</div>
           <div class="stock ${p.total === 0 ? 'out' : p.total <= 2 ? 'low' : ''}" onclick="toggleStock(event, 'dash_${p.id}')">${p.total} box${p.total === 1 ? '' : 'es'} ▾</div>
           <div class="stock-breakdown" id="breakdown_dash_${p.id}">
-            ${p.pieces.map(pt => `<div>${esc(pt.label)}: D ${pt.byLocation.Dawson} · G ${pt.byLocation.Grant}</div>`).join('')}
+            ${p.pieces.map(pt => `
+          <div class="stock-breakdown-row">
+            <span class="sb-piece">${esc(pt.label)}</span>
+            <span class="sb-counts"><span class="sb-who">D</span><span class="sb-count">${pt.byLocation.Dawson}</span><span class="sb-who">G</span><span class="sb-count">${pt.byLocation.Grant}</span></span>
+          </div>`).join('')}
           </div>
         </a>
       `).join('')}
@@ -727,6 +744,12 @@ async function handleDashboard(req, res, user, query) {
 
   <p class="small muted">Looking for exact piece counts by color? The <a href="/inventory">Inventory</a> page is the source of truth. Want more depth — who's-logged-what, full history? Head to <a href="/stats">Stats</a>.</p>
   ${outOfStock.length ? `<div class="notice bad">Completely out of stock: ${outOfStock.map(r => esc(r.product.sku)).join(', ')}.</div>` : ''}
+
+  <div class="card">
+    <strong>💾 Backup</strong>
+    <p class="small muted" style="margin-top:.6rem;">Downloads the entire database — every sale, trip, and inventory count — as one file. Do this weekly and keep the file somewhere safe (email it to yourself or drop it in Google Drive). If anything ever happens to the database, this file is how we get everything back.</p>
+    <a class="btn" href="/backup" style="display:inline-block;text-decoration:none;background:var(--line);color:var(--ink);">Download backup</a>
+  </div>
 
   <div class="card">
     <strong>🔄 Showroom sync</strong>
@@ -1094,6 +1117,10 @@ async function handleAddInventorySubmit(req, res, user, productId) {
       <a href="/inventory/add/${productId}" class="btn" style="display:inline-block;text-decoration:none;margin-right:.5rem;">Add more of this</a>
       <a href="/inventory/add" class="btn" style="display:inline-block;text-decoration:none;background:var(--line);color:var(--ink);">Add a different product</a>
     `;
+  // Stock just changed — push fresh numbers to the public showroom now
+  // (fire-and-forget; the page never waits on GitHub, and any failure shows
+  // on the Dashboard's sync card).
+  syncShowroomInventory().catch(() => {});
   sendHtml(res, 200, layout({ title: 'Inventory updated', user, active: '/inventory/add', body }));
 }
 
@@ -1309,6 +1336,34 @@ async function handleStats(req, res, user) {
   sendHtml(res, 200, layout({ title: 'Stats', user, active: '/stats', body, wide: true }));
 }
 
+// =============================================================================
+// BACKUP — downloads the ENTIRE database as one JSON file. This is the
+// business's whole record (sales, inventory, trips, receipts), so grab one
+// regularly — weekly is plenty — and keep it somewhere safe (email it to
+// yourself, drop it in Google Drive, whatever). If the database is ever
+// lost, this file has everything needed to rebuild it.
+// =============================================================================
+async function handleBackup(req, res, user) {
+  const tables = await db.all(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`);
+  const dump = {
+    exported_at: new Date().toISOString(),
+    exported_by: user.name,
+    app: 'couch-ops',
+    tables: {},
+  };
+  for (const t of tables) {
+    // Table names come from sqlite_master itself, not user input — safe to
+    // interpolate (identifiers can't be bound as ? parameters in SQL anyway).
+    dump.tables[t.name] = await db.all(`SELECT * FROM "${t.name.replace(/"/g, '""')}"`);
+  }
+  const filename = `couch-ops-backup-${today()}.json`;
+  res.writeHead(200, {
+    'Content-Type': 'application/json',
+    'Content-Disposition': `attachment; filename="${filename}"`,
+  });
+  res.end(JSON.stringify(dump, null, 1));
+}
+
 // --- server --------------------------------------------------------------
 
 const server = http.createServer(async (req, res) => {
@@ -1358,6 +1413,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/trips' && req.method === 'POST') return await handleTripsPost(req, res, user);
     if (pathname === '/sales' && req.method === 'GET') return await handleSalesHistory(req, res, user);
     if (pathname === '/stats' && req.method === 'GET') return await handleStats(req, res, user);
+    if (pathname === '/backup' && req.method === 'GET') return await handleBackup(req, res, user);
 
     let m;
     if ((m = pathname.match(/^\/sale\/(\d+)$/)) && req.method === 'GET') return await handleSaleProduct(req, res, user, parseInt(m[1], 10));

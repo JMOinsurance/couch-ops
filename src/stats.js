@@ -65,7 +65,7 @@ export async function perTripStats() {
       setsSold: sold.c,
       grossSales: sold.r,
       costPerBox,
-      netProfit: sold.r - t.total_cost,
+      netProfit: sold.r - t.total_cost - (t.gas_cost || 0),
     };
   }));
 }
@@ -83,9 +83,10 @@ export async function timeInBusiness() {
 export async function profitSummary() {
   const revRow = await db.get(`SELECT COALESCE(SUM(base_price + delivery_fee + assembly_fee),0) s FROM sales`);
   const tripRow = await db.get(`SELECT COALESCE(SUM(total_cost),0) s FROM trips`);
+  const gasRow = await db.get(`SELECT COALESCE(SUM(gas_cost),0) s FROM trips`);
   const receiptRow = await db.get(`SELECT COALESCE(SUM(unit_cost * quantity),0) s FROM inventory_receipts WHERE is_free = 0`);
-  const totalRevenue = revRow.s, totalTripCost = tripRow.s, totalReceiptCost = receiptRow.s;
-  const totalProfit = totalRevenue - totalTripCost - totalReceiptCost;
+  const totalRevenue = revRow.s, totalTripCost = tripRow.s, totalGasCost = gasRow.s, totalReceiptCost = receiptRow.s;
+  const totalProfit = totalRevenue - totalTripCost - totalGasCost - totalReceiptCost;
   const { months } = await timeInBusiness();
   const avgMonthlyProfit = totalProfit / months;
 
@@ -100,12 +101,12 @@ export async function profitSummary() {
   }
   // Trip/receipt costs are shared costs of doing business — split evenly for
   // this summary rather than trying to attribute who paid for which box.
-  const sharedCost = (totalTripCost + totalReceiptCost) / 2;
+  const sharedCost = (totalTripCost + totalGasCost + totalReceiptCost) / 2;
   split.Dawson -= sharedCost;
   split.Grant -= sharedCost;
 
   return {
-    totalRevenue, totalTripCost, totalReceiptCost, totalProfit, avgMonthlyProfit,
+    totalRevenue, totalTripCost, totalGasCost, totalReceiptCost, totalProfit, avgMonthlyProfit,
     avgMonthlyProfitSplit: { Dawson: split.Dawson / months, Grant: split.Grant / months },
     allTimeSplit: split,
   };

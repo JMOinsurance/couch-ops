@@ -23,15 +23,16 @@ export function suggestedUnitCost(sku) {
  * purchases (total_cost / boxes_actual) and the newer granular per-piece
  * inventory_receipts log (unit_cost, free ones excluded from the cost side
  * but their existence doesn't affect this rate calculation either way).
- * This is what boxes COST us — used for "Total cost" stats and profit math.
+ * Includes gas/travel cost, so it's the true landed cost per box —
+ * used for "Total cost" stats and profit math.
  * NOTE: "Expected $" (what inventory on hand is worth) uses the SALE-side
  * rate instead — see avgSoldPricePerBox() in stats.js — since that's what
  * these boxes actually go for once sold, not what we paid for them.
  */
 export async function avgCostPerBox() {
-  const trip = await db.get(`SELECT COALESCE(SUM(total_cost),0) c, COALESCE(SUM(boxes_actual),0) b FROM trips`);
+  const trip = await db.get(`SELECT COALESCE(SUM(total_cost),0) c, COALESCE(SUM(gas_cost),0) g, COALESCE(SUM(boxes_actual),0) b FROM trips`);
   const receipt = await db.get(`SELECT COALESCE(SUM(unit_cost * quantity),0) c, COALESCE(SUM(quantity),0) b FROM inventory_receipts WHERE is_free = 0`);
-  const totalCost = trip.c + receipt.c;
+  const totalCost = trip.c + trip.g + receipt.c;
   const totalBoxes = trip.b + receipt.b;
   return totalBoxes > 0 ? totalCost / totalBoxes : 0;
 }
