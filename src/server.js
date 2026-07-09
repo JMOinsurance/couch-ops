@@ -90,6 +90,20 @@ function buttonGroup(name, options, { selected } = {}) {
 // =============================================================================
 // HOME PAGE — product picker for logging a sale. This is the landing page.
 // =============================================================================
+// Renders the per-piece Dawson/Grant stock rows for a product's expandable
+// breakdown. Whoever holds more of a given piece gets the green "lead"
+// highlight; a zero count is dimmed. Shared by the home and dashboard tiles.
+function stockBreakdownRows(pieces) {
+  return pieces.map(pt => {
+    const d = pt.byLocation.Dawson, g = pt.byLocation.Grant;
+    return `
+          <div class="stock-breakdown-row">
+            <span class="sb-piece">${esc(pt.label)}</span>
+            <span class="sb-counts"><span class="sb-owner${d > g ? ' lead' : ''}${d === 0 ? ' zero' : ''}"><span class="sb-name">Dawson</span><span class="sb-num">${d}</span></span><span class="sb-owner${g > d ? ' lead' : ''}${g === 0 ? ' zero' : ''}"><span class="sb-name">Grant</span><span class="sb-num">${g}</span></span></span>
+          </div>`;
+  }).join('');
+}
+
 async function handleHome(req, res, user) {
   // In-stock products first, out-of-stock ones pushed to the end (still
   // shown, just deprioritized) — sort is stable so the existing model/color
@@ -107,11 +121,7 @@ async function handleHome(req, res, user) {
         <div class="colorname">${esc(p.colorName)}</div>
         <div class="stock ${p.total === 0 ? 'out' : p.total <= 2 ? 'low' : ''}" onclick="toggleStock(event, 'home_${p.id}')">${p.total} box${p.total === 1 ? '' : 'es'} on hand ▾</div>
         <div class="stock-breakdown" id="breakdown_home_${p.id}">
-          ${p.pieces.map(pt => `
-          <div class="stock-breakdown-row">
-            <span class="sb-piece">${esc(pt.label)}</span>
-            <span class="sb-counts"><span class="sb-who">D</span><span class="sb-count">${pt.byLocation.Dawson}</span><span class="sb-who">G</span><span class="sb-count">${pt.byLocation.Grant}</span></span>
-          </div>`).join('')}
+          ${stockBreakdownRows(p.pieces)}
         </div>
       </a>
     `).join('')}
@@ -684,11 +694,7 @@ async function handleDashboard(req, res, user, query) {
           <div class="colorname">${esc(p.colorName)}</div>
           <div class="stock ${p.total === 0 ? 'out' : p.total <= 2 ? 'low' : ''}" onclick="toggleStock(event, 'dash_${p.id}')">${p.total} box${p.total === 1 ? '' : 'es'} ▾</div>
           <div class="stock-breakdown" id="breakdown_dash_${p.id}">
-            ${p.pieces.map(pt => `
-          <div class="stock-breakdown-row">
-            <span class="sb-piece">${esc(pt.label)}</span>
-            <span class="sb-counts"><span class="sb-who">D</span><span class="sb-count">${pt.byLocation.Dawson}</span><span class="sb-who">G</span><span class="sb-count">${pt.byLocation.Grant}</span></span>
-          </div>`).join('')}
+            ${stockBreakdownRows(p.pieces)}
           </div>
         </a>
       `).join('')}
