@@ -12,7 +12,7 @@ import { piecesForProduct, presetsForProduct, presetById, totalOnHandForProduct 
 import { activeProductSummaries } from './product-summary.js';
 import { colorName, colorSwatch, colorTint } from './colors.js';
 import { suggestedPrice } from './pricing.js';
-import { suggestedUnitCost, avgCostPerBox, ONLINE_ORDER_COST_PER_BOX } from './cost.js';
+import { suggestedUnitCost, avgCostPerBox, ONLINE_ORDER_COST_PER_BOX, ORDER_PIECE_COST_SHIPPED } from './cost.js';
 import { partnerEarnings } from './payout.js';
 import { barChart, pieChart } from './charts.js';
 import {
@@ -366,27 +366,97 @@ async function handleSaleConfirm(req, res, user, productId, query) {
     </div>
     <div class="field-block">
       <label class="field-label">Payment status</label>
-      ${buttonGroup('payment_status', ['Paid', 'Deposit', 'Owing'])}
+      ${buttonGroup('payment_status', ['Paid', { value: 'Deposit', label: 'Deposit — pay on delivery' }, 'Owing'])}
     </div>
-    <div class="field-block">
-      <label class="field-label">Deposit amount ($, if applicable)</label>
-      <input type="number" name="deposit_amount" min="0" step="1" value="0" inputmode="numeric">
+    <div id="deposit-block" style="display:none;">
+      <div class="notice" style="background:#fdf3e0;border-color:#f0dcb0;color:#7a5a17;">
+        <strong>Deposit hold.</strong> The pieces get held for this customer right away — inventory and the website will show them as gone, so nobody else gets promised the same couch. The sale won't count as money made until you complete it from the <strong>Deposits</strong> tab (usually delivery day).
+      </div>
+      <div class="field-block">
+        <label class="field-label">Deposit amount ($)</label>
+        <input type="number" name="deposit_amount" min="0" step="1" value="100" inputmode="numeric" id="deposit-amount-input">
+      </div>
+      <div class="field-block">
+        <label class="field-label">Customer name (so you know whose couch this is)</label>
+        <input type="text" name="customer_name">
+      </div>
+      <div class="field-block">
+        <label class="field-label">Customer phone (optional)</label>
+        <input type="tel" name="customer_phone">
+      </div>
     </div>
 
-    <button type="submit" class="big-submit">Log this sale</button>
+    <button type="submit" class="big-submit" id="sale-submit-btn">Log this sale</button>
   </form>
+  <script>
+    // Show the deposit details (defaulting to $100 down) only when "Deposit —
+    // pay on delivery" is picked, and make the button say what it'll do.
+    (function() {
+      const block = document.getElementById('deposit-block');
+      const btn = document.getElementById('sale-submit-btn');
+      document.querySelectorAll('input[name="payment_status"]').forEach(r => {
+        r.addEventListener('change', () => {
+          const isDep = r.value === 'Deposit' && r.checked;
+          block.style.display = isDep ? '' : 'none';
+          btn.textContent = isDep ? 'Log deposit & hold the pieces' : 'Log this sale';
+        });
+      });
+    })();
+  </script>
   `;
   sendHtml(res, 200, layout({ title: `${product.sku} sale`, user, active: '/', body, wide: true }));
+}
+
+// Renders the "inventory went down" confirmation table: every piece this sale
+// touched, with before → after counts at the fulfilling location (and the
+// combined total), so what just happened to stock is visible at a glance.
+function inventoryChangeCard(changes, location) {
+  if (!changes.length) return '';
+  return `
+    <div class="card">
+      <strong>📦 Inventory updated — here's what moved (from ${esc(location)}'s stock)</strong>
+      <table style="margin-top:.6rem;">
+        <thead><tr><th>Piece</th><th>Was</th><th>Now</th><th>Total left (D+G)</th></tr></thead>
+        <tbody>
+          ${changes.map(c => `
+            <tr>
+              <td data-label="Piece">${esc(c.label)}${c.backordered ? ` <span class="pill warn">${c.backordered} on order</span>` : ''}</td>
+              <td data-label="Was">${c.before}</td>
+              <td data-label="Now"><span class="pill ${c.after === 0 ? 'bad' : c.after <= 1 ? 'warn' : 'good'}">${c.after}</span> <span class="small muted">−${c.taken}</span></td>
+              <td data-label="Total left">${c.totalAfter}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+// The latest-trip P&L card shown right after a sale: what the trip cost,
+// how many sets it's sold so far, and where its running profit stands.
+async function latestTripCard() {
+  const trips = await perTripStats();
+  if (!trips.length) return '';
+  const t = trips[trips.length - 1];
+  return `
+    <div class="card">
+      <strong>🚚 ${t.trip_number != null ? 'Trip ' + t.trip_number : 'Latest trip'} — running total (this sale counts toward it)</strong>
+      <div class="stat-grid" style="margin-top:.6rem;margin-bottom:0;">
+        <div class="stat-card bad"><div class="label">Trip cost</div><div class="value">${money(t.total_cost + (t.gas_cost || 0))}</div><div class="small muted">${t.boxes_actual} boxes${t.gas_cost ? ` incl. ${money(t.gas_cost)} gas` : ''}</div></div>
+        <div class="stat-card"><div class="label">Sets sold from it</div><div class="value">${t.setsSold}</div></div>
+        <div class="stat-card"><div class="label">Gross sales from it</div><div class="value">${money(t.grossSales)}</div></div>
+        <div class="stat-card ${t.netProfit >= 0 ? 'good' : 'bad'}"><div class="label">Trip profit so far</div><div class="value">${money(t.netProfit)}</div></div>
+      </div>
+    </div>`;
 }
 
 async function handleSaleSubmit(req, res, user, productId) {
   const form = await readForm(req);
   const pieces = await piecesForProduct(productId);
   const location = form.fulfilled_from;
+  const isDepositHold = form.payment_status === 'Deposit';
 
   const pieceQty = {};
   let piecesTotal = 0;
-  const errors = [];
+  const shortfalls = [];
   for (const pt of pieces) {
     const qty = parseInt(form[`piece_${pt.id}`] || '0', 10) || 0;
     if (qty > 0) {
@@ -394,39 +464,104 @@ async function handleSaleSubmit(req, res, user, productId) {
       piecesTotal += qty;
       const onHand = pt.byLocation[location] || 0;
       if (qty > onHand) {
-        errors.push(`Only ${onHand} of "${pt.label}" on hand at ${location}, but ${qty} needed.`);
+        const other = location === 'Dawson' ? 'Grant' : 'Dawson';
+        shortfalls.push({ pt, need: qty, have: onHand, short: qty - onHand, otherHas: pt.byLocation[other] || 0, otherName: other });
       }
     }
   }
 
-  if (piecesTotal === 0) errors.push('No pieces were selected for this sale.');
-
-  if (errors.length) {
+  if (piecesTotal === 0) {
     const body = `
       <a class="back-link" href="/sale/${productId}">&larr; Back</a>
-      <div class="notice bad"><strong>Couldn't log that sale:</strong><br>${errors.map(esc).join('<br>')}</div>
+      <div class="notice bad"><strong>Couldn't log that sale:</strong><br>No pieces were selected for this sale.</div>
       <p><a href="/sale/${productId}">Try again</a></p>
     `;
     return sendHtml(res, 200, layout({ title: 'Sale not saved', user, active: '/', body }));
   }
 
+  // ---- Oversell: selling more pieces than are on hand is allowed, but each
+  // short piece needs a decision — order it (~$215/box shipped) or grab it on
+  // the next trip. First pass renders that decision screen; the re-submit
+  // comes back with oversell_resolved=1 and a resolve_<pieceId> choice each.
+  if (shortfalls.length && form.oversell_resolved !== '1') {
+    const product = await db.get(`SELECT * FROM products WHERE id = ?`, [productId]);
+    const passThrough = Object.entries(form)
+      .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join('\n');
+    const body = `
+    <a class="back-link" href="/sale/${productId}">&larr; Back to ${esc(product.sku)} options</a>
+    <h1 class="mt0">Not enough in stock — how do you want to cover it?</h1>
+    <p class="muted">You're selling more pieces than ${esc(location)} has on hand. Pick how each missing piece gets covered — the sale still logs now, and the missing pieces get tracked on the <strong>Orders</strong> tab until they're in.</p>
+    <form method="post" action="/sale/${productId}">
+      ${passThrough}
+      <input type="hidden" name="oversell_resolved" value="1">
+      <div class="card">
+        ${shortfalls.map(s => `
+          <div class="field-block">
+            <label class="field-label">${esc(s.pt.label)} — need ${s.need}, ${esc(location)} has ${s.have} (short ${s.short})${s.otherHas > 0 ? ` · FYI: ${esc(s.otherName)} has ${s.otherHas} if you'd rather switch who fulfills` : ''}</label>
+            <select name="resolve_${s.pt.id}" style="width:100%;padding:.8rem .9rem;font-size:1.1rem;border:2px solid var(--line);border-radius:12px;">
+              <option value="order">Order the piece${s.short > 1 ? 's' : ''} — ${money(ORDER_PIECE_COST_SHIPPED)}/box shipped</option>
+              <option value="next_trip">Waiting on the next trip to get ${s.short > 1 ? 'them' : 'it'}</option>
+            </select>
+          </div>
+        `).join('')}
+      </div>
+      <button type="submit" class="big-submit">Log the sale with this plan</button>
+    </form>
+    `;
+    return sendHtml(res, 200, layout({ title: 'Cover the missing pieces', user, active: '/', body, wide: true }));
+  }
+
   const priorProfit = (await profitSummary()).totalProfit;
 
-  const info = await db.run(`
-    INSERT INTO sales (date, product_id, pieces_total, base_price, delivery_fee, delivery_by, assembly_fee, assembly_by, payment_method, payment_status, deposit_amount, entered_by, is_historical)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-  `, [
-    form.date, productId, piecesTotal, parseFloat(form.base_price || '0'), parseFloat(form.delivery_fee || '0'),
-    form.delivery_by || null, parseFloat(form.assembly_fee || '0'), form.assembly_by || null,
-    form.payment_method, form.payment_status, parseFloat(form.deposit_amount || '0'),
-    user.name
-  ]);
+  // Every new sale is assumed to come from the most recent trip, so the
+  // Dashboard's per-trip profit keeps itself up to date automatically.
+  const latestTrip = await db.get(`SELECT id FROM trips ORDER BY date DESC, id DESC LIMIT 1`);
+  const depositAmount = isDepositHold ? (parseFloat(form.deposit_amount || '0') || 100) : parseFloat(form.deposit_amount || '0');
 
-  for (const [pieceTypeId, qty] of Object.entries(pieceQty)) {
-    await db.run(`INSERT INTO sale_items (sale_id, piece_type_id, location, quantity) VALUES (?, ?, ?, ?)`,
-      [info.lastInsertRowid, pieceTypeId, location, qty]);
-    await db.run(`UPDATE inventory SET quantity = quantity - ? WHERE piece_type_id = ? AND location = ?`,
-      [qty, pieceTypeId, location]);
+  const info = await db.run(`
+    INSERT INTO sales (date, product_id, trip_id, pieces_total, base_price, delivery_fee, delivery_by, assembly_fee, assembly_by, payment_method, payment_status, deposit_amount, customer_name, customer_phone, entered_by, is_historical, is_deposit_hold)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+  `, [
+    form.date, productId, latestTrip ? latestTrip.id : null, piecesTotal, parseFloat(form.base_price || '0'), parseFloat(form.delivery_fee || '0'),
+    form.delivery_by || null, parseFloat(form.assembly_fee || '0'), form.assembly_by || null,
+    form.payment_method, form.payment_status, depositAmount,
+    form.customer_name || null, form.customer_phone || null,
+    user.name, isDepositHold ? 1 : 0
+  ]);
+  const saleId = info.lastInsertRowid;
+
+  // Decrement what's actually there (never below 0); anything short becomes a
+  // piece_orders row with the fulfillment choice made above. sale_items only
+  // records what really came out of stock, so deleting/cancelling the sale
+  // puts back exactly what was taken.
+  const changes = [];
+  const orderRows = [];
+  for (const pt of pieces) {
+    const qty = pieceQty[pt.id];
+    if (!qty) continue;
+    const onHand = pt.byLocation[location] || 0;
+    const take = Math.min(qty, onHand);
+    const short = qty - take;
+    if (take > 0) {
+      await db.run(`INSERT INTO sale_items (sale_id, piece_type_id, location, quantity) VALUES (?, ?, ?, ?)`,
+        [saleId, pt.id, location, take]);
+      await db.run(`UPDATE inventory SET quantity = quantity - ? WHERE piece_type_id = ? AND location = ?`,
+        [take, pt.id, location]);
+    }
+    if (short > 0) {
+      const fulfillment = form[`resolve_${pt.id}`] === 'next_trip' ? 'next_trip' : 'order';
+      await db.run(`
+        INSERT INTO piece_orders (sale_id, piece_type_id, location, quantity, fulfillment, unit_cost, status, entered_by, notes)
+        VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?)
+      `, [saleId, pt.id, location, short, fulfillment, fulfillment === 'order' ? ORDER_PIECE_COST_SHIPPED : 0, user.name,
+          `Oversold on sale #${saleId}`]);
+      orderRows.push({ label: pt.label, qty: short, fulfillment });
+    }
+    const otherLoc = location === 'Dawson' ? 'Grant' : 'Dawson';
+    changes.push({
+      label: pt.label, taken: take, before: onHand, after: onHand - take, backordered: short,
+      totalAfter: (onHand - take) + (pt.byLocation[otherLoc] || 0),
+    });
   }
 
   if (form.save_preset_name && form.save_preset_name.trim()) {
@@ -444,6 +579,30 @@ async function handleSaleSubmit(req, res, user, productId) {
   const basePriceNum = parseFloat(form.base_price || '0');
   const whoLabel = who => who === 'Both' ? 'split between Dawson and Grant' : `to ${esc(who || 'unspecified')}`;
 
+  // Stock just changed — push fresh numbers to the public showroom now
+  // (fire-and-forget; the page never waits on GitHub, and any failure shows
+  // on the Dashboard's sync card).
+  syncShowroomInventory().catch(() => {});
+
+  const ordersNote = orderRows.length
+    ? `<div class="notice" style="background:#fdf3e0;border-color:#f0dcb0;color:#7a5a17;"><strong>📋 On order:</strong> ${orderRows.map(o => `${o.qty}× ${esc(o.label)} (${o.fulfillment === 'order' ? `ordering at ${money(ORDER_PIECE_COST_SHIPPED)}/box` : 'next trip'})`).join(', ')} — tracked on the <a href="/orders">Orders</a> tab.</div>`
+    : '';
+
+  if (isDepositHold) {
+    const totalPrice = basePriceNum + deliveryFeeNum + assemblyFeeNum;
+    const body = `
+      <div class="notice" style="background:#fdf3e0;border-color:#f0dcb0;color:#7a5a17;">
+        <strong>🔒 Deposit logged — pieces held.</strong> ${product.sku}${form.customer_name ? ` for ${esc(form.customer_name)}` : ''} — ${money(depositAmount)} down, ${money(totalPrice - depositAmount)} due on delivery (${money(totalPrice)} total).
+        Inventory and the website now show these pieces as gone. When it's paid and delivered, finish it from the <a href="/deposits"><strong>Deposits</strong></a> tab — that's when it counts as money made.
+      </div>
+      ${ordersNote}
+      ${inventoryChangeCard(changes, location)}
+      <a href="/deposits" class="btn" style="display:inline-block;text-decoration:none;margin-right:.5rem;">View deposits</a>
+      <a href="/" class="btn" style="display:inline-block;text-decoration:none;background:var(--line);color:var(--ink);">Log another sale</a>
+    `;
+    return sendHtml(res, 200, layout({ title: 'Deposit logged', user, active: '/', body }));
+  }
+
   const earnings = partnerEarnings({
     base_price: basePriceNum, delivery_fee: deliveryFeeNum, delivery_by: form.delivery_by,
     assembly_fee: assemblyFeeNum, assembly_by: form.assembly_by,
@@ -454,22 +613,20 @@ async function handleSaleSubmit(req, res, user, productId) {
   const allTimeProfit = (await profitSummary()).totalProfit;
   const profitDelta = allTimeProfit - priorProfit;
 
-  // Stock just changed — push fresh numbers to the public showroom now
-  // (fire-and-forget; the page never waits on GitHub, and any failure shows
-  // on the Dashboard's sync card).
-  syncShowroomInventory().catch(() => {});
-
   const body = `
     <div class="notice" style="background:#e3f5ec;border-color:#b9e3cc;color:#0f5c3d;">
       <strong>💰 Sale logged.</strong> ${product.sku} — ${money(basePriceNum)} base${deliveryFeeNum > 0 ? `, plus ${money(deliveryFeeNum)} delivery ${whoLabel(form.delivery_by)}` : ''}${assemblyFeeNum > 0 ? `, plus ${money(assemblyFeeNum)} assembly ${whoLabel(form.assembly_by)}` : ''}. Inventory updated automatically.
       ${form.save_preset_name && form.save_preset_name.trim() ? `<br>Saved as a new preset: "${esc(form.save_preset_name.trim())}" — it'll show up as a button next time.` : ''}
     </div>
+    ${ordersNote}
     <div class="stat-grid">
       <div class="stat-card good"><div class="label">💵 Dawson made</div><div class="value">${money(earnings.Dawson)}</div></div>
       <div class="stat-card good"><div class="label">💵 Grant made</div><div class="value">${money(earnings.Grant)}</div></div>
       <div class="stat-card good"><div class="label">🛋️ Profit on this couch</div><div class="value">${money(saleProfitEstimate)}</div><div class="small muted">${money(basePriceNum)} sale − est. cost ${money(saleCostBasis)} (${piecesTotal} pc × ${money(costRate)}/box)</div></div>
       <div class="stat-card good"><div class="label">📈 All-time profit now</div><div class="value">${money(allTimeProfit)}</div><div class="small muted">⬆ up ${money(profitDelta)} from this sale</div></div>
     </div>
+    ${inventoryChangeCard(changes, location)}
+    ${await latestTripCard()}
     <a href="/" class="btn" style="display:inline-block;text-decoration:none;">Log another sale</a>
   `;
   sendHtml(res, 200, layout({ title: 'Sale logged', user, active: '/', body }));
@@ -660,17 +817,26 @@ async function handleDashboard(req, res, user, query) {
   const trips = (await perTripStats()).slice().reverse(); // newest first
   const totalCost = profit.totalTripCost + profit.totalGasCost + profit.totalReceiptCost;
   const summaries = await activeProductSummaries();
+  const costRate = await avgCostPerBox();
+  const entered = await enteredByBreakdown();
+  const openDeposits = (await db.get(`SELECT COUNT(*) c, COALESCE(SUM(base_price + delivery_fee + assembly_fee - COALESCE(deposit_amount,0)),0) bal FROM sales WHERE COALESCE(is_deposit_hold,0) = 1`));
+  const openOrders = (await db.get(`SELECT COALESCE(SUM(quantity),0) q, COUNT(*) c FROM piece_orders WHERE status = 'open'`));
 
   const body = `
   <h1 class="mt0">Dashboard</h1>
+  ${openDeposits.c > 0 ? `<div class="notice" style="background:#fdf3e0;border-color:#f0dcb0;color:#7a5a17;"><strong>🔒 ${openDeposits.c} deposit${openDeposits.c === 1 ? '' : 's'} waiting on delivery</strong> — ${money(openDeposits.bal)} still to collect. <a href="/deposits">Open the Deposits tab &rarr;</a></div>` : ''}
+  ${openOrders.q > 0 ? `<div class="notice" style="background:#fdf3e0;border-color:#f0dcb0;color:#7a5a17;"><strong>📋 ${openOrders.q} piece${openOrders.q === 1 ? '' : 's'} on order</strong> for sold couches. <a href="/orders">Open the Orders tab &rarr;</a></div>` : ''}
   <div class="stat-grid">
     <div class="stat-card"><div class="label">💵 Gross sales, last 30 days</div><div class="value">${money(grossThisMonth)}</div></div>
     <div class="stat-card"><div class="label">Sales, last 30 days</div><div class="value">${salesThisMonth}</div></div>
+    <div class="stat-card good"><div class="label">💵 Gross sales, all-time</div><div class="value">${money(profit.totalRevenue)}</div></div>
     <div class="stat-card ${profit.totalProfit >= 0 ? 'good' : 'bad'}"><div class="label">📈 All-time net profit</div><div class="value">${money(profit.totalProfit)}</div></div>
+    <div class="stat-card ${profit.avgMonthlyProfit >= 0 ? 'good' : 'bad'}"><div class="label">📈 Avg monthly net profit</div><div class="value">${money(profit.avgMonthlyProfit)}</div></div>
     <div class="stat-card bad"><div class="label">💸 Total cost, all-time</div><div class="value">${money(totalCost)}</div></div>
-    <div class="stat-card ${owing > 0 ? 'warn' : ''}"><div class="label">Still owed by customers</div><div class="value">${money(owing)}</div></div>
+    <div class="stat-card ${owing > 0 ? 'warn' : ''}"><div class="label">Still owed by customers</div><div class="value">${money(owing)}</div><div class="small muted">includes open deposits</div></div>
     <div class="stat-card ${outOfStock.length ? 'bad' : ''}"><div class="label">Completely out-of-stock lines</div><div class="value">${outOfStock.length}</div></div>
     <div class="stat-card"><div class="label">Avg sale price</div><div class="value">${money(avgSale)}</div></div>
+    <div class="stat-card"><div class="label">Avg cost / box (buying)</div><div class="value">${money(costRate)}</div></div>
     <div class="stat-card good"><div class="label">💰 Expected $ of inventory on hand</div><div class="value">${money(expected.value)}</div><div class="small muted">${expected.totalBoxes} boxes × ${money(expected.rate)} avg sold/box</div></div>
     <div class="stat-card"><div class="label">Started</div><div class="value">${months} mo${months === 1 ? '' : 's'} ago</div><div class="small muted">${esc(firstDate || '—')}</div></div>
   </div>
@@ -748,7 +914,20 @@ async function handleDashboard(req, res, user, query) {
     <p class="small muted" style="margin-top:.6rem;"><a href="/trips">Log a new trip &rarr;</a></p>
   </div>
 
-  <p class="small muted">Looking for exact piece counts by color? The <a href="/inventory">Inventory</a> page is the source of truth. Want more depth — who's-logged-what, full history? Head to <a href="/stats">Stats</a>.</p>
+  <div class="card">
+    <strong>Who's logged what</strong>
+    <table style="margin-top:.6rem;">
+      <thead><tr><th></th><th>Dawson</th><th>Grant</th></tr></thead>
+      <tbody>
+        <tr><td data-label="">Sales</td><td data-label="Dawson">${entered.sales.Dawson || 0}</td><td data-label="Grant">${entered.sales.Grant || 0}</td></tr>
+        <tr><td data-label="">Trips</td><td data-label="Dawson">${entered.trips.Dawson || 0}</td><td data-label="Grant">${entered.trips.Grant || 0}</td></tr>
+        <tr><td data-label="">Inventory added</td><td data-label="Dawson">${entered.receipts.Dawson || 0}</td><td data-label="Grant">${entered.receipts.Grant || 0}</td></tr>
+      </tbody>
+    </table>
+    <p class="small muted" style="margin-bottom:0;">Net profit split: base price 50/50, delivery/assembly to whoever did them; shared trip + purchase costs split evenly.</p>
+  </div>
+
+  <p class="small muted">Looking for exact piece counts by color? The <a href="/inventory">Inventory</a> page is the source of truth.</p>
   ${outOfStock.length ? `<div class="notice bad">Completely out of stock: ${outOfStock.map(r => esc(r.product.sku)).join(', ')}.</div>` : ''}
 
   <div class="card">
@@ -1146,7 +1325,7 @@ async function handleSalesHistory(req, res, user) {
   const rows = sales.map(s => ({
     id: s.id, date: s.date, sku: s.sku || '—', colorName: s.color ? colorName(s.color) : '',
     pieces: s.pieces_total, total: (s.base_price || 0) + (s.delivery_fee || 0) + (s.assembly_fee || 0),
-    status: s.payment_status, enteredBy: s.entered_by || (s.is_historical ? 'imported history' : '—'),
+    status: s.is_deposit_hold ? 'Deposit hold' : s.payment_status, enteredBy: s.entered_by || (s.is_historical ? 'imported history' : '—'),
   }));
 
   const body = `
@@ -1161,7 +1340,7 @@ async function handleSalesHistory(req, res, user) {
           <td data-label="Product">${esc(r.sku)} ${r.colorName ? '— ' + esc(r.colorName) : ''}</td>
           <td data-label="Pieces">${r.pieces ?? '—'}</td>
           <td data-label="Total">${money(r.total)}</td>
-          <td data-label="Status"><span class="pill ${r.status === 'Owing' ? 'bad' : r.status === 'Deposit' ? 'warn' : 'good'}">${esc(r.status)}</span></td>
+          <td data-label="Status"><span class="pill ${r.status === 'Owing' ? 'bad' : (r.status === 'Deposit' || r.status === 'Deposit hold') ? 'warn' : 'good'}">${esc(r.status)}</span></td>
           <td data-label="Logged by">${esc(r.enteredBy)}</td>
           <td data-label="">
             <a href="/sales/${r.id}/edit">Edit</a>
@@ -1235,8 +1414,223 @@ async function handleSaleDelete(req, res, user, saleId) {
   // some remote SQLite-protocol backends don't honor session-level FK
   // pragmas the same way a local connection does, so this can't be assumed.
   await db.run(`DELETE FROM sale_items WHERE sale_id = ?`, [saleId]);
+  // Any still-open backorders tied to this sale die with it (those pieces
+  // never came out of inventory, so there's nothing to restore for them).
+  await db.run(`DELETE FROM piece_orders WHERE sale_id = ? AND status = 'open'`, [saleId]);
   await db.run(`DELETE FROM sales WHERE id = ?`, [saleId]);
+  // Stock just changed (pieces went back) — keep the public showroom honest.
+  syncShowroomInventory().catch(() => {});
   redirect(res, '/sales');
+}
+
+// =============================================================================
+// DEPOSITS — couches with money down (usually $100) but not yet paid in full /
+// delivered. Pieces are already held (decremented + synced to the showroom);
+// completing one here is what turns it into real, counted revenue.
+// =============================================================================
+async function handleDeposits(req, res, user, notice) {
+  const holds = await db.all(`
+    SELECT sales.*, products.sku, products.color FROM sales
+    LEFT JOIN products ON products.id = sales.product_id
+    WHERE COALESCE(sales.is_deposit_hold, 0) = 1
+    ORDER BY sales.date ASC, sales.id ASC
+  `);
+
+  const body = `
+  <h1 class="mt0">Deposits</h1>
+  ${notice ? `<div class="notice ${notice.bad ? 'bad' : ''}">${esc(notice.text)}</div>` : ''}
+  <p class="muted">Couches with money down but not delivered/paid in full yet. Their pieces are already held — inventory and the website show them as gone. Completing a deposit is what counts it as money made.</p>
+  ${holds.length === 0 ? `<div class="card"><p class="muted" style="margin:0;">No open deposits right now. When you log a sale with "Deposit — pay on delivery", it shows up here.</p></div>` : ''}
+  ${holds.map(s => {
+    const total = (s.base_price || 0) + (s.delivery_fee || 0) + (s.assembly_fee || 0);
+    const balance = total - (s.deposit_amount || 0);
+    const days = Math.max(0, Math.round((Date.now() - new Date(s.date).getTime()) / 86400000));
+    return `
+    <div class="card" style="border-left:4px solid #e0a93e;">
+      <div class="section-actions">
+        <strong>${esc(s.sku || '?')} ${s.color ? '— ' + esc(colorName(s.color)) : ''}</strong>
+        <span class="pill warn">held ${days} day${days === 1 ? '' : 's'}</span>
+      </div>
+      <table style="margin-top:.5rem;">
+        <tbody>
+          <tr><td data-label="">Customer</td><td data-label="Customer">${esc(s.customer_name || '—')}${s.customer_phone ? ` · <a href="tel:${esc(s.customer_phone)}">${esc(s.customer_phone)}</a>` : ''}</td></tr>
+          <tr><td data-label="">Deposit taken</td><td data-label="Deposit">${money(s.deposit_amount || 0)} on ${esc(s.date)}</td></tr>
+          <tr><td data-label="">Agreed total</td><td data-label="Total">${money(total)} (${s.pieces_total ?? '?'} pieces)</td></tr>
+          <tr><td data-label="">Due on delivery</td><td data-label="Due"><strong>${money(balance)}</strong></td></tr>
+        </tbody>
+      </table>
+      <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.7rem;">
+        <a class="btn" href="/deposits/${s.id}/complete" style="display:inline-block;text-decoration:none;">✅ Delivered &amp; paid — complete sale</a>
+        <form method="post" action="/deposits/${s.id}/cancel" onsubmit="return confirm('Cancel this deposit? The pieces go back into stock and the website will show them available again.');" style="margin:0;">
+          <button type="submit" class="btn" style="background:#fbe7e7;color:var(--bad);border:1px solid #f0bcbc;">Cancel &amp; restock</button>
+        </form>
+      </div>
+    </div>`;
+  }).join('')}
+  `;
+  sendHtml(res, 200, layout({ title: 'Deposits', user, active: '/deposits', body, wide: true }));
+}
+
+async function handleDepositCompleteGet(req, res, user, saleId) {
+  const sale = await db.get(`SELECT sales.*, products.sku FROM sales LEFT JOIN products ON products.id = sales.product_id WHERE sales.id = ? AND COALESCE(sales.is_deposit_hold,0) = 1`, [saleId]);
+  if (!sale) return redirect(res, '/deposits');
+  const total = (sale.base_price || 0) + (sale.delivery_fee || 0) + (sale.assembly_fee || 0);
+
+  const body = `
+  <a class="back-link" href="/deposits">&larr; Back to deposits</a>
+  <h1 class="mt0">Complete sale — ${esc(sale.sku || '')}${sale.customer_name ? ` for ${esc(sale.customer_name)}` : ''}</h1>
+  <p class="muted">Deposit of <strong>${money(sale.deposit_amount || 0)}</strong> already in hand — <strong>${money(total - (sale.deposit_amount || 0))}</strong> to collect now (it's part of the same ${money(total)} total, not extra). Adjust anything that changed, then complete it.</p>
+  <form method="post" action="/deposits/${saleId}/complete">
+    <div class="field-block"><label class="field-label">Delivery / completion date</label><input type="date" name="date" value="${today()}" required></div>
+    <div class="field-block"><label class="field-label">Base price ($)</label><input type="number" name="base_price" min="0" step="1" required inputmode="numeric" value="${sale.base_price}"></div>
+    <div class="field-block">
+      <label class="field-label">Delivery fee ($)</label>
+      <input type="number" name="delivery_fee" min="0" step="1" inputmode="numeric" value="${sale.delivery_fee || 0}">
+      ${buttonGroup('delivery_by', [{ value: '', label: 'No delivery' }, 'Dawson', 'Grant', 'Both'], { selected: sale.delivery_by || '' })}
+    </div>
+    <div class="field-block">
+      <label class="field-label">Assembly fee ($)</label>
+      <input type="number" name="assembly_fee" min="0" step="1" inputmode="numeric" value="${sale.assembly_fee || 0}">
+      ${buttonGroup('assembly_by', [{ value: '', label: 'No assembly' }, 'Dawson', 'Grant', 'Both'], { selected: sale.assembly_by || '' })}
+    </div>
+    <div class="field-block"><label class="field-label">Rest paid how?</label>${buttonGroup('payment_method', ['Cash', 'Venmo', 'Other'], { selected: sale.payment_method })}</div>
+    <button type="submit" class="big-submit">Complete the sale 🎉</button>
+  </form>
+  `;
+  sendHtml(res, 200, layout({ title: 'Complete sale', user, active: '/deposits', body }));
+}
+
+async function handleDepositCompletePost(req, res, user, saleId) {
+  const sale = await db.get(`SELECT * FROM sales WHERE id = ? AND COALESCE(is_deposit_hold,0) = 1`, [saleId]);
+  if (!sale) return redirect(res, '/deposits');
+  const form = await readForm(req);
+  const priorProfit = (await profitSummary()).totalProfit;
+  await db.run(`
+    UPDATE sales SET date = ?, base_price = ?, delivery_fee = ?, delivery_by = ?, assembly_fee = ?, assembly_by = ?,
+      payment_method = ?, payment_status = 'Paid', is_deposit_hold = 0 WHERE id = ?
+  `, [
+    form.date, parseFloat(form.base_price || '0'), parseFloat(form.delivery_fee || '0'), form.delivery_by || null,
+    parseFloat(form.assembly_fee || '0'), form.assembly_by || null, form.payment_method, saleId
+  ]);
+  const basePriceNum = parseFloat(form.base_price || '0');
+  const earnings = partnerEarnings({
+    base_price: basePriceNum, delivery_fee: parseFloat(form.delivery_fee || '0'), delivery_by: form.delivery_by,
+    assembly_fee: parseFloat(form.assembly_fee || '0'), assembly_by: form.assembly_by,
+  });
+  const allTimeProfit = (await profitSummary()).totalProfit;
+  const body = `
+    <div class="notice" style="background:#e3f5ec;border-color:#b9e3cc;color:#0f5c3d;">
+      <strong>💰 Sale completed.</strong> Deposit of ${money(sale.deposit_amount || 0)} plus the balance — the full amount now counts as revenue.
+    </div>
+    <div class="stat-grid">
+      <div class="stat-card good"><div class="label">💵 Dawson made</div><div class="value">${money(earnings.Dawson)}</div></div>
+      <div class="stat-card good"><div class="label">💵 Grant made</div><div class="value">${money(earnings.Grant)}</div></div>
+      <div class="stat-card good"><div class="label">📈 All-time profit now</div><div class="value">${money(allTimeProfit)}</div><div class="small muted">⬆ up ${money(allTimeProfit - priorProfit)} from completing this</div></div>
+    </div>
+    ${await latestTripCard()}
+    <a href="/deposits" class="btn" style="display:inline-block;text-decoration:none;margin-right:.5rem;">Back to deposits</a>
+    <a href="/" class="btn" style="display:inline-block;text-decoration:none;background:var(--line);color:var(--ink);">Log another sale</a>
+  `;
+  sendHtml(res, 200, layout({ title: 'Sale completed', user, active: '/deposits', body }));
+}
+
+async function handleDepositCancel(req, res, user, saleId) {
+  const sale = await db.get(`SELECT * FROM sales WHERE id = ? AND COALESCE(is_deposit_hold,0) = 1`, [saleId]);
+  if (!sale) return redirect(res, '/deposits');
+  // Same restore-then-delete as deleting a sale: held pieces go back to stock.
+  const items = await db.all(`SELECT * FROM sale_items WHERE sale_id = ?`, [saleId]);
+  for (const item of items) {
+    await db.run(`
+      INSERT INTO inventory (piece_type_id, location, quantity) VALUES (?, ?, ?)
+      ON CONFLICT(piece_type_id, location) DO UPDATE SET quantity = quantity + excluded.quantity
+    `, [item.piece_type_id, item.location, item.quantity]);
+  }
+  await db.run(`DELETE FROM sale_items WHERE sale_id = ?`, [saleId]);
+  await db.run(`DELETE FROM piece_orders WHERE sale_id = ? AND status = 'open'`, [saleId]);
+  await db.run(`DELETE FROM sales WHERE id = ?`, [saleId]);
+  syncShowroomInventory().catch(() => {});
+  await handleDeposits(req, res, user, { text: 'Deposit cancelled — pieces are back in stock and the website will show them available on the next sync (already kicked off).' });
+}
+
+// =============================================================================
+// ORDERS — pieces sold beyond what was on hand. Each is either being ordered
+// (~$215/box shipped) or waiting on the next trip. Marking one done records
+// the cost correctly without double-counting inventory.
+// =============================================================================
+async function handleOrders(req, res, user, notice) {
+  const rows = await db.all(`
+    SELECT piece_orders.*, piece_types.label, piece_types.full_sku, products.sku, products.color,
+           sales.customer_name, sales.date AS sale_date, COALESCE(sales.is_deposit_hold, 0) AS sale_is_hold
+    FROM piece_orders
+    JOIN piece_types ON piece_types.id = piece_orders.piece_type_id
+    JOIN products ON products.id = piece_types.product_id
+    LEFT JOIN sales ON sales.id = piece_orders.sale_id
+    ORDER BY piece_orders.status ASC, piece_orders.created_at DESC
+  `);
+  const open = rows.filter(r => r.status === 'open');
+  const done = rows.filter(r => r.status !== 'open').slice(0, 30);
+
+  const renderRow = r => `
+    <tr>
+      <td data-label="Piece"><span class="swatch-dot" style="background:${colorSwatch(r.color)}"></span>${esc(r.sku)} — ${esc(r.label)} <span class="small muted">${esc(r.full_sku)}</span></td>
+      <td data-label="Qty">${r.quantity}</td>
+      <td data-label="How">${r.fulfillment === 'order' ? `📦 Ordering — ${money(r.unit_cost)}/box shipped` : '🚚 Next trip'}</td>
+      <td data-label="For">${r.sale_id ? `Sale #${r.sale_id}${r.customer_name ? ' — ' + esc(r.customer_name) : ''}${r.sale_is_hold ? ' <span class="pill warn">deposit</span>' : ''} <span class="small muted">${esc(r.sale_date || '')}</span>` : '—'}</td>
+      <td data-label="">${r.status === 'open' ? `
+        <form method="post" action="/orders/${r.id}/fulfill" style="margin:0;display:inline;">
+          <button type="submit" class="btn" style="padding:.45rem .8rem;font-size:.92rem;">Got it ✓</button>
+        </form>` : `<span class="pill good">done ${esc((r.fulfilled_at || '').slice(0, 10))}</span>`}</td>
+    </tr>`;
+
+  const body = `
+  <h1 class="mt0">Orders</h1>
+  ${notice ? `<div class="notice ${notice.bad ? 'bad' : ''}">${esc(notice.text)}</div>` : ''}
+  <p class="muted">Pieces that were sold before they were in stock. "Got it ✓" closes one out: ordered pieces record their real ${money(ORDER_PIECE_COST_SHIPPED)}/box cost automatically; next-trip pieces come out of stock (log the trip's boxes in first so the counts stay honest).</p>
+  <div class="card">
+    <strong>Open (${open.length})</strong>
+    ${open.length ? `
+    <table style="margin-top:.6rem;">
+      <thead><tr><th>Piece</th><th>Qty</th><th>How</th><th>For</th><th></th></tr></thead>
+      <tbody>${open.map(renderRow).join('')}</tbody>
+    </table>` : `<p class="muted small" style="margin-bottom:0;">Nothing on order — you're covered.</p>`}
+  </div>
+  ${done.length ? `
+  <div class="card">
+    <strong>Recently completed</strong>
+    <table style="margin-top:.6rem;">
+      <thead><tr><th>Piece</th><th>Qty</th><th>How</th><th>For</th><th></th></tr></thead>
+      <tbody>${done.map(renderRow).join('')}</tbody>
+    </table>
+  </div>` : ''}
+  `;
+  sendHtml(res, 200, layout({ title: 'Orders', user, active: '/orders', body, wide: true }));
+}
+
+async function handleOrderFulfill(req, res, user, orderId) {
+  const order = await db.get(`SELECT * FROM piece_orders WHERE id = ? AND status = 'open'`, [orderId]);
+  if (!order) return redirect(res, '/orders');
+
+  if (order.fulfillment === 'order') {
+    // Bought specifically for this customer and handed straight over — record
+    // the real cost (feeds profit + avg cost/box) but never touches on-hand
+    // inventory, since the piece was already promised out the door.
+    await db.run(`
+      INSERT INTO inventory_receipts (date, piece_type_id, location, quantity, unit_cost, is_free, trip_id, entered_by, notes, is_historical)
+      VALUES (?, ?, ?, ?, ?, 0, NULL, ?, ?, 0)
+    `, [today(), order.piece_type_id, order.location, order.quantity, order.unit_cost, user.name,
+        `Special-order piece for sale #${order.sale_id ?? '?'} (auto-logged from Orders)`]);
+  } else {
+    // Came in with the next trip's boxes (which get logged via Trips / Add
+    // Inventory as usual) — so hand-off just decrements stock like the sale
+    // would have originally.
+    await db.run(`UPDATE inventory SET quantity = MAX(0, quantity - ?) WHERE piece_type_id = ? AND location = ?`,
+      [order.quantity, order.piece_type_id, order.location]);
+  }
+  await db.run(`UPDATE piece_orders SET status = 'fulfilled', fulfilled_at = ? WHERE id = ?`, [new Date().toISOString(), orderId]);
+  syncShowroomInventory().catch(() => {});
+  await handleOrders(req, res, user, { text: order.fulfillment === 'order'
+    ? `Done — ${order.quantity} box(es) logged at ${money(order.unit_cost)}/box so the profit math stays right.`
+    : `Done — ${order.quantity} box(es) taken out of stock for the customer.` });
 }
 
 async function handleSaleEditPost(req, res, user, saleId) {
@@ -1418,7 +1812,9 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/trips' && req.method === 'GET') return await handleTripsGet(req, res, user);
     if (pathname === '/trips' && req.method === 'POST') return await handleTripsPost(req, res, user);
     if (pathname === '/sales' && req.method === 'GET') return await handleSalesHistory(req, res, user);
-    if (pathname === '/stats' && req.method === 'GET') return await handleStats(req, res, user);
+    if (pathname === '/deposits' && req.method === 'GET') return await handleDeposits(req, res, user);
+    if (pathname === '/orders' && req.method === 'GET') return await handleOrders(req, res, user);
+    if (pathname === '/stats' && req.method === 'GET') return redirect(res, '/dashboard'); // Stats lives on the Dashboard now
     if (pathname === '/backup' && req.method === 'GET') return await handleBackup(req, res, user);
 
     let m;
@@ -1434,6 +1830,10 @@ const server = http.createServer(async (req, res) => {
     if ((m = pathname.match(/^\/sales\/(\d+)\/edit$/)) && req.method === 'GET') return await handleSaleEditGet(req, res, user, parseInt(m[1], 10));
     if ((m = pathname.match(/^\/sales\/(\d+)\/edit$/)) && req.method === 'POST') return await handleSaleEditPost(req, res, user, parseInt(m[1], 10));
     if ((m = pathname.match(/^\/sales\/(\d+)\/delete$/)) && req.method === 'POST') return await handleSaleDelete(req, res, user, parseInt(m[1], 10));
+    if ((m = pathname.match(/^\/deposits\/(\d+)\/complete$/)) && req.method === 'GET') return await handleDepositCompleteGet(req, res, user, parseInt(m[1], 10));
+    if ((m = pathname.match(/^\/deposits\/(\d+)\/complete$/)) && req.method === 'POST') return await handleDepositCompletePost(req, res, user, parseInt(m[1], 10));
+    if ((m = pathname.match(/^\/deposits\/(\d+)\/cancel$/)) && req.method === 'POST') return await handleDepositCancel(req, res, user, parseInt(m[1], 10));
+    if ((m = pathname.match(/^\/orders\/(\d+)\/fulfill$/)) && req.method === 'POST') return await handleOrderFulfill(req, res, user, parseInt(m[1], 10));
 
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Not found');

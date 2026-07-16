@@ -32,7 +32,8 @@ export function layout({ title, user, active, body, wide }) {
     ['/inventory/add', 'Add Inventory'],
     ['/trips', 'Trips'],
     ['/sales', 'Sales'],
-    ['/stats', 'Stats'],
+    ['/deposits', 'Deposits'],
+    ['/orders', 'Orders'],
     ['/dashboard', 'Dashboard'],
   ];
   return `<!doctype html>

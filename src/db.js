@@ -189,6 +189,24 @@ const SCHEMA_STATEMENTS = [
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
 
+  // Pieces sold beyond what was on hand (oversells): each row is a shortfall
+  // to fulfill, either by ordering the piece online ("order", ~$215 shipped)
+  // or grabbing it on the next trip ("next_trip"). Lives on the Orders tab.
+  `CREATE TABLE IF NOT EXISTS piece_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sale_id INTEGER REFERENCES sales(id),
+    piece_type_id INTEGER NOT NULL REFERENCES piece_types(id),
+    location TEXT NOT NULL,
+    quantity INTEGER NOT NULL,
+    fulfillment TEXT NOT NULL,
+    unit_cost REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'open',
+    entered_by TEXT,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    fulfilled_at TEXT
+  )`,
+
   `CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(date)`,
   `CREATE INDEX IF NOT EXISTS idx_sales_product ON sales(product_id)`,
   `CREATE INDEX IF NOT EXISTS idx_inventory_piece ON inventory(piece_type_id)`,
@@ -207,6 +225,16 @@ try {
 }
 
 await client.batch(SCHEMA_STATEMENTS, 'write');
+
+// Lightweight migration: deposit-hold flag on sales. A deposit-hold is a sale
+// where a customer put money down (usually $100) but hasn't paid in full /
+// taken delivery yet — pieces are reserved (decremented) so the showroom
+// shows them gone, but the sale doesn't count toward revenue until completed
+// from the Deposits tab. ALTER errors if the column already exists — safe to
+// swallow on every startup after the first.
+try {
+  await client.execute(`ALTER TABLE sales ADD COLUMN is_deposit_hold INTEGER NOT NULL DEFAULT 0`);
+} catch { /* column already exists */ }
 
 export function nowIso() {
   return new Date().toISOString();

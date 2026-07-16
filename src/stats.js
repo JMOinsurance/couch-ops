@@ -5,7 +5,7 @@ import { db } from './db.js';
 import { partnerEarnings } from './payout.js';
 
 export async function avgSalePrice() {
-  const row = await db.get(`SELECT AVG(base_price + delivery_fee + assembly_fee) a, COUNT(*) c FROM sales`);
+  const row = await db.get(`SELECT AVG(base_price + delivery_fee + assembly_fee) a, COUNT(*) c FROM sales WHERE COALESCE(is_deposit_hold,0) = 0`);
   return { avg: row.a || 0, count: row.c || 0 };
 }
 
@@ -15,6 +15,7 @@ export async function recentSales(limit = 5) {
     SELECT sales.id, sales.date, sales.base_price, sales.delivery_fee, sales.assembly_fee,
            products.sku, products.color
     FROM sales LEFT JOIN products ON products.id = sales.product_id
+    WHERE COALESCE(sales.is_deposit_hold,0) = 0
     ORDER BY sales.date DESC, sales.id DESC
     LIMIT ?
   `, [limit]);
@@ -25,6 +26,7 @@ export async function bestSellers(limit = 10) {
     SELECT products.sku, products.color, products.model, COUNT(*) saleCount, COALESCE(SUM(sales.pieces_total),0) piecesSold,
            COALESCE(SUM(sales.base_price + sales.delivery_fee + sales.assembly_fee),0) revenue
     FROM sales JOIN products ON products.id = sales.product_id
+    WHERE COALESCE(sales.is_deposit_hold,0) = 0
     GROUP BY sales.product_id
     ORDER BY saleCount DESC
     LIMIT ?
@@ -35,6 +37,7 @@ export async function salesByModel() {
   return db.all(`
     SELECT products.model, COUNT(*) saleCount, COALESCE(SUM(sales.base_price + sales.delivery_fee + sales.assembly_fee),0) revenue
     FROM sales JOIN products ON products.id = sales.product_id
+    WHERE COALESCE(sales.is_deposit_hold,0) = 0
     GROUP BY products.model
     ORDER BY saleCount DESC
   `);
@@ -44,6 +47,7 @@ export async function salesByColor() {
   return db.all(`
     SELECT products.color, COUNT(*) saleCount
     FROM sales JOIN products ON products.id = sales.product_id
+    WHERE COALESCE(sales.is_deposit_hold,0) = 0
     GROUP BY products.color
     ORDER BY saleCount DESC
   `);
@@ -58,7 +62,7 @@ export async function perTripStats() {
     // under. No sell-through % here on purpose: pieces bought on one trip
     // sometimes complete a couch counted under a later trip, so a clean
     // "boxes in vs. boxes sold" ratio per trip doesn't hold up.
-    const sold = await db.get(`SELECT COUNT(*) c, COALESCE(SUM(base_price + delivery_fee + assembly_fee),0) r FROM sales WHERE trip_id = ?`, [t.id]);
+    const sold = await db.get(`SELECT COUNT(*) c, COALESCE(SUM(base_price + delivery_fee + assembly_fee),0) r FROM sales WHERE trip_id = ? AND COALESCE(is_deposit_hold,0) = 0`, [t.id]);
     const costPerBox = t.boxes_actual > 0 ? t.total_cost / t.boxes_actual : 0;
     return {
       ...t,
@@ -81,7 +85,7 @@ export async function timeInBusiness() {
 }
 
 export async function profitSummary() {
-  const revRow = await db.get(`SELECT COALESCE(SUM(base_price + delivery_fee + assembly_fee),0) s FROM sales`);
+  const revRow = await db.get(`SELECT COALESCE(SUM(base_price + delivery_fee + assembly_fee),0) s FROM sales WHERE COALESCE(is_deposit_hold,0) = 0`);
   const tripRow = await db.get(`SELECT COALESCE(SUM(total_cost),0) s FROM trips`);
   const gasRow = await db.get(`SELECT COALESCE(SUM(gas_cost),0) s FROM trips`);
   const receiptRow = await db.get(`SELECT COALESCE(SUM(unit_cost * quantity),0) s FROM inventory_receipts WHERE is_free = 0`);
@@ -92,7 +96,7 @@ export async function profitSummary() {
 
   // Partner split: base always 50/50, fees go by delivery_by/assembly_by
   // (with "Both" splitting that one fee 50/50) — sum it up sale by sale.
-  const sales = await db.all(`SELECT base_price, delivery_fee, delivery_by, assembly_fee, assembly_by FROM sales`);
+  const sales = await db.all(`SELECT base_price, delivery_fee, delivery_by, assembly_fee, assembly_by FROM sales WHERE COALESCE(is_deposit_hold,0) = 0`);
   const split = { Dawson: 0, Grant: 0 };
   for (const s of sales) {
     const e = partnerEarnings(s);
@@ -122,7 +126,7 @@ export async function enteredByBreakdown() {
 
 /** Avg $ actually brought in per box sold (gross base-price revenue / pieces sold) — this is a SALE-side rate, not a cost/purchase rate. Used for "what's my inventory worth" valuation, since that's what these boxes are actually worth once sold, not what they cost to buy. */
 export async function avgSoldPricePerBox() {
-  const row = await db.get(`SELECT COALESCE(SUM(base_price),0) rev, COALESCE(SUM(pieces_total),0) pieces FROM sales WHERE pieces_total > 0`);
+  const row = await db.get(`SELECT COALESCE(SUM(base_price),0) rev, COALESCE(SUM(pieces_total),0) pieces FROM sales WHERE pieces_total > 0 AND COALESCE(is_deposit_hold,0) = 0`);
   return row.pieces > 0 ? row.rev / row.pieces : 0;
 }
 

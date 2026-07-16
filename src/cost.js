@@ -13,6 +13,11 @@ const DEFAULT_COST_PER_BOX = 75;
 const DISCOUNTED_SKUS = { '120WE': 50 };
 export const ONLINE_ORDER_COST_PER_BOX = 150;
 
+// Cost to special-order a single piece shipped (used when a sale needs more
+// pieces than are on hand and the shortfall gets ordered rather than waiting
+// for the next trip). From Dawson: $215/box shipped.
+export const ORDER_PIECE_COST_SHIPPED = 215;
+
 /** Suggested $/box for a product, before the user edits it. */
 export function suggestedUnitCost(sku) {
   return DISCOUNTED_SKUS[sku] ?? DEFAULT_COST_PER_BOX;
