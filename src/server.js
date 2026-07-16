@@ -353,8 +353,8 @@ async function handleSaleConfirm(req, res, user, productId, query) {
         <input type="text" name="delivery_location" placeholder="e.g. Festus warehouse pickup, or their address">
       </div>
       <div class="field-block">
-        <label class="field-label">When's it being delivered?</label>
-        ${buttonGroup('delivery_when', [{ value: 'tbd', label: 'TBD' }, { value: 'next_trip', label: 'After next trip' }, { value: 'date', label: 'Pick a date' }])}
+        <label class="field-label">When's it being delivered? (if pieces are short, it's the next trip anyway)</label>
+        ${buttonGroup('delivery_when', [{ value: 'next_trip', label: 'After next trip' }, { value: 'date', label: 'Pick a date' }])}
         <input type="date" name="delivery_date" id="delivery-date-input" style="display:none;margin-top:.5rem;">
       </div>
     </div>
@@ -583,7 +583,9 @@ async function handleSaleSubmit(req, res, user, productId) {
     form.delivery_by || null, parseFloat(form.assembly_fee || '0'), form.assembly_by || null,
     form.payment_method, form.payment_status, depositAmount,
     form.customer_name || null, form.delivery_location || null,
-    form.delivery_when === 'next_trip' ? 'Next trip' : form.delivery_when === 'tbd' ? 'TBD' : (form.delivery_date || null),
+    // Delivery assumption: a picked date wins; otherwise "Next trip" — and if
+    // any pieces are short (customer waiting on the trip), that's true anyway.
+    isDepositHold ? ((form.delivery_when === 'date' && form.delivery_date) ? form.delivery_date : 'Next trip') : (form.delivery_date || null),
     user.name, isDepositHold ? 1 : 0
   ]);
   const saleId = info.lastInsertRowid;
@@ -1591,7 +1593,6 @@ async function handleDeposits(req, res, user, notice) {
         <label class="field-label" style="margin:0;">Delivering:</label>
         <input type="date" name="delivery_date" value="${esc(dd && dd !== 'TBD' && dd !== 'Next trip' ? dd : '')}" style="width:auto;">
         <button type="submit" class="btn" style="padding:.5rem .9rem;background:var(--line);color:var(--ink);">Set date</button>
-        <button type="submit" class="btn" name="delivery_date_special" value="TBD" style="padding:.5rem .9rem;background:var(--line);color:var(--ink);">TBD</button>
         <button type="submit" class="btn" name="delivery_date_special" value="Next trip" style="padding:.5rem .9rem;background:var(--line);color:var(--ink);">After next trip</button>
       </form>
       <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.7rem;">
