@@ -117,6 +117,20 @@ export async function buildLiveInventory() {
 
   const qtyByPiece = {};
   for (const row of invRows) qtyByPiece[row.piece_type_id] = (qtyByPiece[row.piece_type_id] || 0) + row.quantity;
+
+  // Pieces already promised to customers who are waiting on the next trip
+  // (open "next_trip" piece orders) are claims against incoming stock — the
+  // public site must never show them as available. Subtract those claims so
+  // the moment the trip's boxes get logged in, the claimed ones stay hidden.
+  // ("order" fulfillments are bought separately for the customer and never
+  // enter stock, so they don't reduce anything here.)
+  try {
+    const claims = await db.all(`SELECT piece_type_id, COALESCE(SUM(quantity),0) q FROM piece_orders WHERE status = 'open' AND fulfillment = 'next_trip' GROUP BY piece_type_id`);
+    for (const c of claims) {
+      if (qtyByPiece[c.piece_type_id] != null) qtyByPiece[c.piece_type_id] = Math.max(0, qtyByPiece[c.piece_type_id] - c.q);
+      // pieces with claims but no inventory rows stay at 0 — nothing to hide yet
+    }
+  } catch { /* piece_orders table not there yet (first boot before migration) — skip */ }
   const pieceTypesByProduct = {};
   for (const pt of pieceTypes) (pieceTypesByProduct[pt.product_id] ||= []).push(pt);
 

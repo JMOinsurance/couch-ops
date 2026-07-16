@@ -353,8 +353,9 @@ async function handleSaleConfirm(req, res, user, productId, query) {
         <input type="text" name="delivery_location" placeholder="e.g. Festus warehouse pickup, or their address">
       </div>
       <div class="field-block">
-        <label class="field-label">Delivery date (if you already know it — can be set later on the Deposits tab)</label>
-        <input type="date" name="delivery_date">
+        <label class="field-label">When's it being delivered?</label>
+        ${buttonGroup('delivery_when', [{ value: 'tbd', label: 'TBD' }, { value: 'next_trip', label: 'After next trip' }, { value: 'date', label: 'Pick a date' }])}
+        <input type="date" name="delivery_date" id="delivery-date-input" style="display:none;margin-top:.5rem;">
       </div>
     </div>
 
@@ -442,6 +443,11 @@ async function handleSaleConfirm(req, res, user, productId, query) {
       }
       wireFee('delivery_by', dFee);
       wireFee('assembly_by', aFee);
+      // Delivery timing: the date picker only shows when "Pick a date" is chosen.
+      const ddInput = document.getElementById('delivery-date-input');
+      document.querySelectorAll('input[name="delivery_when"]').forEach(r => {
+        r.addEventListener('change', () => { if (r.checked) ddInput.style.display = r.value === 'date' ? '' : 'none'; });
+      });
       document.querySelectorAll('input[name="payment_status"]').forEach(r => {
         r.addEventListener('change', () => {
           const isDep = isDeposit();
@@ -576,7 +582,8 @@ async function handleSaleSubmit(req, res, user, productId) {
     form.date, productId, latestTrip ? latestTrip.id : null, piecesTotal, parseFloat(form.base_price || '0'), parseFloat(form.delivery_fee || '0'),
     form.delivery_by || null, parseFloat(form.assembly_fee || '0'), form.assembly_by || null,
     form.payment_method, form.payment_status, depositAmount,
-    form.customer_name || null, form.delivery_location || null, form.delivery_date || null,
+    form.customer_name || null, form.delivery_location || null,
+    form.delivery_when === 'next_trip' ? 'Next trip' : form.delivery_when === 'tbd' ? 'TBD' : (form.delivery_date || null),
     user.name, isDepositHold ? 1 : 0
   ]);
   const saleId = info.lastInsertRowid;
@@ -1537,17 +1544,37 @@ async function handleDeposits(req, res, user, notice) {
     <div class="stat-card ${openOrders.length ? 'warn' : ''}"><div class="label">📋 Pieces on order</div><div class="value">${openOrders.reduce((n, o) => n + o.quantity, 0)}</div><div class="small muted">${openOrders.length} open order line${openOrders.length === 1 ? '' : 's'}</div></div>
   </div>
   ${holds.length === 0 ? `<div class="card"><p class="muted" style="margin:0;">No open deposits. When you log a sale with "Deposit — pay on delivery", it shows up here.</p></div>` : ''}
+  <div class="card" style="padding:.7rem .9rem;">
+    <strong class="small" style="display:block;margin-bottom:.4rem;">Show:</strong>
+    <div class="btn-group" id="dep-filter" style="display:flex;flex-wrap:wrap;gap:.4rem;">
+      <button type="button" class="btn dep-filter-btn" data-f="" style="padding:.5rem .9rem;">All</button>
+      <button type="button" class="btn dep-filter-btn" data-f="ready" style="padding:.5rem .9rem;background:var(--line);color:var(--ink);">✅ Pieces all in stock</button>
+      <button type="button" class="btn dep-filter-btn" data-f="waiting" style="padding:.5rem .9rem;background:var(--line);color:var(--ink);">🚚 Waiting on next trip</button>
+      <button type="button" class="btn dep-filter-btn" data-f="ordering" style="padding:.5rem .9rem;background:var(--line);color:var(--ink);">📦 Being ordered</button>
+    </div>
+  </div>
   ${holds.map(s => {
     const total = (s.base_price || 0) + (s.delivery_fee || 0) + (s.assembly_fee || 0);
     const balance = total - (s.deposit_amount || 0);
     const days = Math.max(0, Math.round((Date.now() - new Date(s.date).getTime()) / 86400000));
     const held = itemsBySale[s.id] || [];
     const shorts = ordersBySale[s.id] || [];
+    const openShorts = shorts.filter(o => o.status === 'open');
+    const flags = [
+      openShorts.length === 0 ? 'ready' : '',
+      openShorts.some(o => o.fulfillment === 'next_trip') ? 'waiting' : '',
+      openShorts.some(o => o.fulfillment === 'order') ? 'ordering' : '',
+    ].filter(Boolean).join(' ');
+    const dd = s.delivery_date;
+    const deliveryPill = !dd ? `<span class="pill bad">no delivery plan yet</span>`
+      : dd === 'TBD' ? `<span class="pill warn">delivery TBD</span>`
+      : dd === 'Next trip' ? `<span class="pill warn">🚚 delivering after next trip</span>`
+      : `<span class="pill good">🚚 delivering ${esc(dd)}</span>`;
     return `
-    <div class="card" style="border-left:4px solid #e0a93e;">
+    <div class="card dep-card" data-f="${flags}" style="border-left:4px solid #e0a93e;">
       <div class="section-actions">
         <strong>Sale #${s.id} — ${esc(s.sku || '?')} ${s.color ? '— ' + esc(colorName(s.color)) : ''}${s.customer_name ? ` · ${esc(s.customer_name)}` : ''}</strong>
-        <span>${s.delivery_date ? `<span class="pill good">🚚 delivering ${esc(s.delivery_date)}</span>` : `<span class="pill bad">no delivery date yet</span>`} <span class="pill warn">held ${days} day${days === 1 ? '' : 's'}</span></span>
+        <span>${deliveryPill} ${openShorts.length === 0 ? '<span class="pill good">✅ pieces all in stock</span>' : ''} <span class="pill warn">held ${days} day${days === 1 ? '' : 's'}</span></span>
       </div>
       <table style="margin-top:.5rem;">
         <tbody>
@@ -1560,8 +1587,10 @@ async function handleDeposits(req, res, user, notice) {
       </table>
       <form method="post" action="/deposits/${s.id}/update" style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin:.7rem 0 0;">
         <label class="field-label" style="margin:0;">Delivering:</label>
-        <input type="date" name="delivery_date" value="${esc(s.delivery_date || '')}" style="width:auto;">
+        <input type="date" name="delivery_date" value="${esc(dd && dd !== 'TBD' && dd !== 'Next trip' ? dd : '')}" style="width:auto;">
         <button type="submit" class="btn" style="padding:.5rem .9rem;background:var(--line);color:var(--ink);">Set date</button>
+        <button type="submit" class="btn" name="delivery_date_special" value="TBD" style="padding:.5rem .9rem;background:var(--line);color:var(--ink);">TBD</button>
+        <button type="submit" class="btn" name="delivery_date_special" value="Next trip" style="padding:.5rem .9rem;background:var(--line);color:var(--ink);">After next trip</button>
       </form>
       <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.7rem;">
         <a class="btn" href="/deposits/${s.id}/complete" style="display:inline-block;text-decoration:none;">✅ Delivered &amp; paid — complete sale</a>
@@ -1601,7 +1630,7 @@ async function handleDeposits(req, res, user, notice) {
     <table>
       <thead><tr><th>Piece</th><th>Qty</th><th>How</th><th>For</th><th></th></tr></thead>
       <tbody>${openOrders.map(r => `
-        <tr>
+        <tr class="order-row" data-f="${r.fulfillment === 'order' ? 'ordering' : 'waiting'}">
           <td data-label="Piece"><span class="swatch-dot" style="background:${colorSwatch(r.color)}"></span>${esc(r.sku)} — ${esc(r.label)} <span class="small muted">${esc(r.full_sku)}</span></td>
           <td data-label="Qty">${r.quantity}</td>
           <td data-label="How">${r.fulfillment === 'order' ? `📦 Ordering — ${money(r.unit_cost)}/box shipped` : '🚚 Waiting on next trip'}</td>
@@ -1616,6 +1645,27 @@ async function handleDeposits(req, res, user, notice) {
     <p class="small muted" style="margin-bottom:0;">"Got it ✓": ordered pieces log their real ${money(ORDER_PIECE_COST_SHIPPED)}/box cost automatically; next-trip pieces come out of stock (log the trip's boxes in first).</p>
     ` : `<p class="muted small" style="margin:0;">Nothing on order — you're covered.</p>`}
   </div>
+  <script>
+    // Filter deposits (cards) and order rows together, so you can flip
+    // between "ready to deliver" / "waiting on next trip" / "being ordered".
+    (function() {
+      const btns = document.querySelectorAll('.dep-filter-btn');
+      function apply(f) {
+        document.querySelectorAll('.dep-card').forEach(c => {
+          c.style.display = (!f || (c.dataset.f || '').split(' ').includes(f)) ? '' : 'none';
+        });
+        document.querySelectorAll('.order-row').forEach(r => {
+          r.style.display = (!f || f === 'ready' ? !f : r.dataset.f === f) ? '' : 'none';
+        });
+        btns.forEach(b => {
+          const on = (b.dataset.f || '') === (f || '');
+          b.style.background = on ? '' : 'var(--line)';
+          b.style.color = on ? '' : 'var(--ink)';
+        });
+      }
+      btns.forEach(b => b.addEventListener('click', () => apply(b.dataset.f)));
+    })();
+  </script>
   `;
   sendHtml(res, 200, layout({ title: 'Deposits & Orders', user, active: '/deposits', body, wide: true }));
 }
@@ -1627,6 +1677,8 @@ async function handleDepositUpdate(req, res, user, saleId) {
   const sale = await db.get(`SELECT * FROM sales WHERE id = ? AND COALESCE(is_deposit_hold,0) = 1`, [saleId]);
   if (!sale) return redirect(res, '/deposits');
   const form = await readForm(req);
+  // "TBD" / "After next trip" quick buttons override whatever's in the date box.
+  if (form.delivery_date_special) form.delivery_date = form.delivery_date_special;
   const pick = (key, fallback, num) => {
     if (!(key in form)) return fallback;
     if (num) return parseFloat(form[key] || '0');
