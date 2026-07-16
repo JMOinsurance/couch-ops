@@ -236,6 +236,12 @@ try {
   await client.execute(`ALTER TABLE sales ADD COLUMN is_deposit_hold INTEGER NOT NULL DEFAULT 0`);
 } catch { /* column already exists */ }
 
+// Where the couch gets picked up / delivered (replaces collecting a phone
+// number on deposits — the address/location is what's actually needed).
+try {
+  await client.execute(`ALTER TABLE sales ADD COLUMN delivery_location TEXT`);
+} catch { /* column already exists */ }
+
 export function nowIso() {
   return new Date().toISOString();
 }

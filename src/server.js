@@ -332,48 +332,16 @@ async function handleSaleConfirm(req, res, user, productId, query) {
   <p class="muted">${headerNote}</p>
 
   <form method="post" action="/sale/${productId}">
-    <h2 class="mt0">Pieces</h2>
-    ${pieceFieldsHtml}
-
-    <h2>Where's this coming from?</h2>
+    <h2 class="mt0">Payment status</h2>
     <div class="field-block">
-      ${buttonGroup('fulfilled_from', ['Dawson', 'Grant'])}
-    </div>
-
-    <h2>Price &amp; payment</h2>
-    <div class="field-block">
-      <label class="field-label">Date</label>
-      <input type="date" name="date" value="${today()}" required>
-    </div>
-    <div class="field-block">
-      <label class="field-label">Base price ($)</label>
-      <input type="number" name="base_price" min="0" step="1" required inputmode="numeric" ${priceInputExtra}>
-      ${priceHintHtml}
-    </div>
-    <div class="field-block">
-      <label class="field-label">Delivery fee ($, if any)</label>
-      <input type="number" name="delivery_fee" min="0" step="1" value="0" inputmode="numeric">
-      ${buttonGroup('delivery_by', [{ value: '', label: 'No delivery' }, 'Dawson', 'Grant', 'Both'])}
-    </div>
-    <div class="field-block">
-      <label class="field-label">Assembly fee ($, if any)</label>
-      <input type="number" name="assembly_fee" min="0" step="1" value="0" inputmode="numeric">
-      ${buttonGroup('assembly_by', [{ value: '', label: 'No assembly' }, 'Dawson', 'Grant', 'Both'])}
-    </div>
-    <div class="field-block">
-      <label class="field-label">Paid how?</label>
-      ${buttonGroup('payment_method', ['Cash', 'Venmo', 'Other'])}
-    </div>
-    <div class="field-block">
-      <label class="field-label">Payment status</label>
-      ${buttonGroup('payment_status', ['Paid', { value: 'Deposit', label: 'Deposit — pay on delivery' }, 'Owing'])}
+      ${buttonGroup('payment_status', ['Paid', { value: 'Deposit', label: 'Deposit — pay on delivery' }])}
     </div>
     <div id="deposit-block" style="display:none;">
       <div class="notice" style="background:#fdf3e0;border-color:#f0dcb0;color:#7a5a17;">
-        <strong>Deposit hold.</strong> The pieces get held for this customer right away — inventory and the website will show them as gone, so nobody else gets promised the same couch. The sale won't count as money made until you complete it from the <strong>Deposits</strong> tab (usually delivery day).
+        <strong>Deposit hold.</strong> The pieces get held for this customer right away — inventory and the website will show them as gone. It counts as money made only when you complete it from the <strong>Deposits</strong> tab (delivery day).
       </div>
       <div class="field-block">
-        <label class="field-label">Deposit amount ($)</label>
+        <label class="field-label">Deposit amount ($ — usually $100, change it if not)</label>
         <input type="number" name="deposit_amount" min="0" step="1" value="100" inputmode="numeric" id="deposit-amount-input">
       </div>
       <div class="field-block">
@@ -381,26 +349,109 @@ async function handleSaleConfirm(req, res, user, productId, query) {
         <input type="text" name="customer_name">
       </div>
       <div class="field-block">
-        <label class="field-label">Customer phone (optional)</label>
-        <input type="tel" name="customer_phone">
+        <label class="field-label">Location of pickup/delivery</label>
+        <input type="text" name="delivery_location" placeholder="e.g. Festus warehouse pickup, or their address">
       </div>
+      <div class="field-block">
+        <label class="field-label">Delivery date (if you already know it — can be set later on the Deposits tab)</label>
+        <input type="date" name="delivery_date">
+      </div>
+    </div>
+
+    <h2>Pieces</h2>
+    ${pieceFieldsHtml}
+
+    <h2>Whose inventory is this coming from?</h2>
+    <div class="field-block">
+      ${buttonGroup('fulfilled_from', ['Dawson', 'Grant'])}
+    </div>
+
+    <h2>Price</h2>
+    <div class="field-block">
+      <label class="field-label">Couch price ($)</label>
+      <input type="number" name="base_price" id="base-price-input" min="0" step="1" required inputmode="numeric" ${priceInputExtra}>
+      ${priceHintHtml}
+    </div>
+    <div class="field-block">
+      <label class="field-label">Delivery — who's doing it?</label>
+      ${buttonGroup('delivery_by', [{ value: '', label: 'No delivery' }, 'Dawson', 'Grant', 'Both'])}
+      <label class="field-label" style="margin-top:.6rem;">Delivery fee ($ — assumes $100 once someone's picked)</label>
+      <input type="number" name="delivery_fee" id="delivery-fee-input" min="0" step="1" value="0" inputmode="numeric">
+    </div>
+    <div class="field-block">
+      <label class="field-label">Assembly — who's doing it?</label>
+      ${buttonGroup('assembly_by', [{ value: '', label: 'No assembly' }, 'Dawson', 'Grant', 'Both'])}
+      <label class="field-label" style="margin-top:.6rem;">Assembly fee ($ — assumes $100 once someone's picked)</label>
+      <input type="number" name="assembly_fee" id="assembly-fee-input" min="0" step="1" value="0" inputmode="numeric">
+    </div>
+    <div class="notice" id="total-line" style="background:#e9f0fa;border-color:#c4d7f2;color:#1d4f91;font-weight:600;">Total: —</div>
+
+    <h2>Paid how?</h2>
+    <div class="field-block">
+      ${buttonGroup('payment_method', ['Cash', 'Venmo', 'Other'])}
+    </div>
+    <div class="field-block">
+      <label class="field-label">Date (assumed today)</label>
+      <input type="date" name="date" value="${today()}" required>
     </div>
 
     <button type="submit" class="big-submit" id="sale-submit-btn">Log this sale</button>
   </form>
   <script>
-    // Show the deposit details (defaulting to $100 down) only when "Deposit —
-    // pay on delivery" is picked, and make the button say what it'll do.
     (function() {
       const block = document.getElementById('deposit-block');
       const btn = document.getElementById('sale-submit-btn');
+      const base = document.getElementById('base-price-input');
+      const dFee = document.getElementById('delivery-fee-input');
+      const aFee = document.getElementById('assembly-fee-input');
+      const totalLine = document.getElementById('total-line');
+      const depAmt = document.getElementById('deposit-amount-input');
+
+      function isDeposit() {
+        const sel = document.querySelector('input[name="payment_status"]:checked');
+        return sel && sel.value === 'Deposit';
+      }
+      function fmt(n) { return '$' + (n || 0).toLocaleString(); }
+      function updateTotal() {
+        const b = parseFloat(base.value) || 0;
+        const d = parseFloat(dFee.value) || 0;
+        const a = parseFloat(aFee.value) || 0;
+        const total = b + d + a;
+        let text = 'Total: ' + fmt(total);
+        const parts = [];
+        if (d > 0) parts.push(fmt(d) + ' delivery');
+        if (a > 0) parts.push(fmt(a) + ' assembly');
+        if (parts.length) text += ' (' + fmt(b) + ' couch + ' + parts.join(' + ') + ')';
+        if (isDeposit()) {
+          const dep = parseFloat(depAmt.value) || 0;
+          text += ' — ' + fmt(dep) + ' now, ' + fmt(Math.max(0, total - dep)) + ' due on delivery';
+        }
+        totalLine.textContent = text;
+      }
+      // Delivery/assembly: picking a person assumes a $100 fee (still editable);
+      // "No delivery/assembly" zeroes it back out.
+      function wireFee(radioName, feeInput) {
+        document.querySelectorAll('input[name="' + radioName + '"]').forEach(r => {
+          r.addEventListener('change', () => {
+            if (!r.checked) return;
+            if (r.value === '') feeInput.value = 0;
+            else if (!(parseFloat(feeInput.value) > 0)) feeInput.value = 100;
+            updateTotal();
+          });
+        });
+      }
+      wireFee('delivery_by', dFee);
+      wireFee('assembly_by', aFee);
       document.querySelectorAll('input[name="payment_status"]').forEach(r => {
         r.addEventListener('change', () => {
-          const isDep = r.value === 'Deposit' && r.checked;
+          const isDep = isDeposit();
           block.style.display = isDep ? '' : 'none';
           btn.textContent = isDep ? 'Log deposit & hold the pieces' : 'Log this sale';
+          updateTotal();
         });
       });
+      [base, dFee, aFee, depAmt].forEach(el => el.addEventListener('input', updateTotal));
+      updateTotal();
     })();
   </script>
   `;
@@ -490,7 +541,7 @@ async function handleSaleSubmit(req, res, user, productId) {
     const body = `
     <a class="back-link" href="/sale/${productId}">&larr; Back to ${esc(product.sku)} options</a>
     <h1 class="mt0">Not enough in stock — how do you want to cover it?</h1>
-    <p class="muted">You're selling more pieces than ${esc(location)} has on hand. Pick how each missing piece gets covered — the sale still logs now, and the missing pieces get tracked on the <strong>Orders</strong> tab until they're in.</p>
+    <p class="muted">You're selling more pieces than ${esc(location)} has on hand. Pick how each missing piece gets covered — the sale still logs now, and the missing pieces get tracked on the <strong>Deposits &amp; Orders</strong> tab until they're in. Default assumes the customer's waiting on the next trip.</p>
     <form method="post" action="/sale/${productId}">
       ${passThrough}
       <input type="hidden" name="oversell_resolved" value="1">
@@ -499,8 +550,8 @@ async function handleSaleSubmit(req, res, user, productId) {
           <div class="field-block">
             <label class="field-label">${esc(s.pt.label)} — need ${s.need}, ${esc(location)} has ${s.have} (short ${s.short})${s.otherHas > 0 ? ` · FYI: ${esc(s.otherName)} has ${s.otherHas} if you'd rather switch who fulfills` : ''}</label>
             <select name="resolve_${s.pt.id}" style="width:100%;padding:.8rem .9rem;font-size:1.1rem;border:2px solid var(--line);border-radius:12px;">
+              <option value="next_trip">Customer's waiting on the next trip to get ${s.short > 1 ? 'them' : 'it'}</option>
               <option value="order">Order the piece${s.short > 1 ? 's' : ''} — ${money(ORDER_PIECE_COST_SHIPPED)}/box shipped</option>
-              <option value="next_trip">Waiting on the next trip to get ${s.short > 1 ? 'them' : 'it'}</option>
             </select>
           </div>
         `).join('')}
@@ -519,13 +570,13 @@ async function handleSaleSubmit(req, res, user, productId) {
   const depositAmount = isDepositHold ? (parseFloat(form.deposit_amount || '0') || 100) : parseFloat(form.deposit_amount || '0');
 
   const info = await db.run(`
-    INSERT INTO sales (date, product_id, trip_id, pieces_total, base_price, delivery_fee, delivery_by, assembly_fee, assembly_by, payment_method, payment_status, deposit_amount, customer_name, customer_phone, entered_by, is_historical, is_deposit_hold)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+    INSERT INTO sales (date, product_id, trip_id, pieces_total, base_price, delivery_fee, delivery_by, assembly_fee, assembly_by, payment_method, payment_status, deposit_amount, customer_name, delivery_location, delivery_date, entered_by, is_historical, is_deposit_hold)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
   `, [
     form.date, productId, latestTrip ? latestTrip.id : null, piecesTotal, parseFloat(form.base_price || '0'), parseFloat(form.delivery_fee || '0'),
     form.delivery_by || null, parseFloat(form.assembly_fee || '0'), form.assembly_by || null,
     form.payment_method, form.payment_status, depositAmount,
-    form.customer_name || null, form.customer_phone || null,
+    form.customer_name || null, form.delivery_location || null, form.delivery_date || null,
     user.name, isDepositHold ? 1 : 0
   ]);
   const saleId = info.lastInsertRowid;
@@ -549,7 +600,9 @@ async function handleSaleSubmit(req, res, user, productId) {
         [take, pt.id, location]);
     }
     if (short > 0) {
-      const fulfillment = form[`resolve_${pt.id}`] === 'next_trip' ? 'next_trip' : 'order';
+      // Default to waiting on the next trip — ordering ($215/box shipped) only
+      // happens when explicitly picked.
+      const fulfillment = form[`resolve_${pt.id}`] === 'order' ? 'order' : 'next_trip';
       await db.run(`
         INSERT INTO piece_orders (sale_id, piece_type_id, location, quantity, fulfillment, unit_cost, status, entered_by, notes)
         VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?)
@@ -585,14 +638,14 @@ async function handleSaleSubmit(req, res, user, productId) {
   syncShowroomInventory().catch(() => {});
 
   const ordersNote = orderRows.length
-    ? `<div class="notice" style="background:#fdf3e0;border-color:#f0dcb0;color:#7a5a17;"><strong>📋 On order:</strong> ${orderRows.map(o => `${o.qty}× ${esc(o.label)} (${o.fulfillment === 'order' ? `ordering at ${money(ORDER_PIECE_COST_SHIPPED)}/box` : 'next trip'})`).join(', ')} — tracked on the <a href="/orders">Orders</a> tab.</div>`
+    ? `<div class="notice" style="background:#fdf3e0;border-color:#f0dcb0;color:#7a5a17;"><strong>📋 On order:</strong> ${orderRows.map(o => `${o.qty}× ${esc(o.label)} (${o.fulfillment === 'order' ? `ordering at ${money(ORDER_PIECE_COST_SHIPPED)}/box` : 'next trip'})`).join(', ')} — tracked on the <a href="/deposits">Deposits &amp; Orders</a> tab.</div>`
     : '';
 
   if (isDepositHold) {
     const totalPrice = basePriceNum + deliveryFeeNum + assemblyFeeNum;
     const body = `
       <div class="notice" style="background:#fdf3e0;border-color:#f0dcb0;color:#7a5a17;">
-        <strong>🔒 Deposit logged — pieces held.</strong> ${product.sku}${form.customer_name ? ` for ${esc(form.customer_name)}` : ''} — ${money(depositAmount)} down, ${money(totalPrice - depositAmount)} due on delivery (${money(totalPrice)} total).
+        <strong>🔒 Deposit logged (sale #${saleId}) — pieces held.</strong> ${product.sku}${form.customer_name ? ` for ${esc(form.customer_name)}` : ''} — ${money(depositAmount)} down, ${money(totalPrice - depositAmount)} due on delivery (${money(totalPrice)} total).
         Inventory and the website now show these pieces as gone. When it's paid and delivered, finish it from the <a href="/deposits"><strong>Deposits</strong></a> tab — that's when it counts as money made.
       </div>
       ${ordersNote}
@@ -615,7 +668,7 @@ async function handleSaleSubmit(req, res, user, productId) {
 
   const body = `
     <div class="notice" style="background:#e3f5ec;border-color:#b9e3cc;color:#0f5c3d;">
-      <strong>💰 Sale logged.</strong> ${product.sku} — ${money(basePriceNum)} base${deliveryFeeNum > 0 ? `, plus ${money(deliveryFeeNum)} delivery ${whoLabel(form.delivery_by)}` : ''}${assemblyFeeNum > 0 ? `, plus ${money(assemblyFeeNum)} assembly ${whoLabel(form.assembly_by)}` : ''}. Inventory updated automatically.
+      <strong>💰 Sale #${saleId} logged.</strong> ${product.sku} — ${money(basePriceNum)} base${deliveryFeeNum > 0 ? `, plus ${money(deliveryFeeNum)} delivery ${whoLabel(form.delivery_by)}` : ''}${assemblyFeeNum > 0 ? `, plus ${money(assemblyFeeNum)} assembly ${whoLabel(form.assembly_by)}` : ''}. Inventory updated automatically.
       ${form.save_preset_name && form.save_preset_name.trim() ? `<br>Saved as a new preset: "${esc(form.save_preset_name.trim())}" — it'll show up as a button next time.` : ''}
     </div>
     ${ordersNote}
@@ -825,7 +878,7 @@ async function handleDashboard(req, res, user, query) {
   const body = `
   <h1 class="mt0">Dashboard</h1>
   ${openDeposits.c > 0 ? `<div class="notice" style="background:#fdf3e0;border-color:#f0dcb0;color:#7a5a17;"><strong>🔒 ${openDeposits.c} deposit${openDeposits.c === 1 ? '' : 's'} waiting on delivery</strong> — ${money(openDeposits.bal)} still to collect. <a href="/deposits">Open the Deposits tab &rarr;</a></div>` : ''}
-  ${openOrders.q > 0 ? `<div class="notice" style="background:#fdf3e0;border-color:#f0dcb0;color:#7a5a17;"><strong>📋 ${openOrders.q} piece${openOrders.q === 1 ? '' : 's'} on order</strong> for sold couches. <a href="/orders">Open the Orders tab &rarr;</a></div>` : ''}
+  ${openOrders.q > 0 ? `<div class="notice" style="background:#fdf3e0;border-color:#f0dcb0;color:#7a5a17;"><strong>📋 ${openOrders.q} piece${openOrders.q === 1 ? '' : 's'} on order</strong> for sold couches. <a href="/deposits">Open Deposits &amp; Orders &rarr;</a></div>` : ''}
   <div class="stat-grid">
     <div class="stat-card"><div class="label">💵 Gross sales, last 30 days</div><div class="value">${money(grossThisMonth)}</div></div>
     <div class="stat-card"><div class="label">Sales, last 30 days</div><div class="value">${salesThisMonth}</div></div>
@@ -987,9 +1040,17 @@ async function handleTripsGet(req, res, user, notice) {
   for (const row of await db.all(`SELECT * FROM trip_photos ORDER BY id`)) {
     (photosByTrip[row.trip_id] ||= []).push(row);
   }
+  // Sale counter + per-trip sold counts: new sales auto-link to the newest
+  // trip, so these keep themselves current as sales get logged.
+  const saleCounter = await db.get(`SELECT COUNT(*) c, MAX(id) maxId FROM sales`);
+  const soldByTrip = Object.fromEntries(
+    (await db.all(`SELECT trip_id, COUNT(*) c FROM sales WHERE trip_id IS NOT NULL AND COALESCE(is_deposit_hold,0) = 0 GROUP BY trip_id`)).map(r => [r.trip_id, r.c]));
   const body = `
   <h1 class="mt0">Trips</h1>
   ${notice ? `<div class="notice ${notice.bad ? 'bad' : ''}">${esc(notice.text)}</div>` : ''}
+  <div class="stat-grid">
+    <div class="stat-card"><div class="label">🧾 Sales logged, all-time</div><div class="value">${saleCounter.c}</div><div class="small muted">latest is sale #${saleCounter.maxId ?? '—'} — next one will be #${(saleCounter.maxId ?? 0) + 1}</div></div>
+  </div>
   <div class="card">
     <h2 class="mt0">Log a new trip</h2>
     <form method="post" action="/trips" id="trip-form">
@@ -1053,7 +1114,7 @@ async function handleTripsGet(req, res, user, notice) {
   </script>
   <h2>History</h2>
   <table>
-    <thead><tr><th>Trip</th><th>Date</th><th>Traveler</th><th>Expected</th><th>Actual</th><th>Cost</th><th>Gas</th><th>Logged by</th><th>Photos</th><th></th></tr></thead>
+    <thead><tr><th>Trip</th><th>Date</th><th>Traveler</th><th>Expected</th><th>Actual</th><th>Cost</th><th>Gas</th><th>Sold</th><th>Logged by</th><th>Photos</th><th></th></tr></thead>
     <tbody>
       ${trips.map(t => {
         const mismatch = t.boxes_expected != null && t.boxes_expected !== t.boxes_actual;
@@ -1066,6 +1127,7 @@ async function handleTripsGet(req, res, user, notice) {
           <td data-label="Actual">${t.boxes_actual} ${mismatch ? `<span class="pill bad">mismatch</span>` : ''}</td>
           <td data-label="Cost">${money(t.total_cost)}</td>
           <td data-label="Gas">${t.gas_cost ? money(t.gas_cost) : '—'}</td>
+          <td data-label="Sold">${soldByTrip[t.id] || 0}</td>
           <td data-label="Logged by">${esc(t.entered_by || '—')}</td>
           <td data-label="Photos">${photos.map(p => `<a href="/uploads/trip-photos/${esc(p.file_path)}" target="_blank"><img src="/uploads/trip-photos/${esc(p.file_path)}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;margin-right:.2rem;"></a>`).join('') || '—'}</td>
           <td data-label=""><a href="/trips/${t.id}/edit">Edit</a></td>
@@ -1429,46 +1491,166 @@ async function handleSaleDelete(req, res, user, saleId) {
 // completing one here is what turns it into real, counted revenue.
 // =============================================================================
 async function handleDeposits(req, res, user, notice) {
+  // Next delivery first; deposits without a delivery date sink to the bottom
+  // (they need one set — the edit panel on each card does it).
   const holds = await db.all(`
     SELECT sales.*, products.sku, products.color FROM sales
     LEFT JOIN products ON products.id = sales.product_id
     WHERE COALESCE(sales.is_deposit_hold, 0) = 1
-    ORDER BY sales.date ASC, sales.id ASC
+    ORDER BY (sales.delivery_date IS NULL) ASC, sales.delivery_date ASC, sales.date ASC, sales.id ASC
+  `);
+  const owed = holds.reduce((sum, s) => sum + ((s.base_price || 0) + (s.delivery_fee || 0) + (s.assembly_fee || 0) - (s.deposit_amount || 0)), 0);
+
+  // Piece breakdowns: what's held from stock, and what's still needed
+  // (oversold shortfalls) with how each one's being covered.
+  const holdIds = holds.map(s => s.id);
+  const itemsBySale = {}, ordersBySale = {};
+  if (holdIds.length) {
+    const ph = holdIds.map(() => '?').join(',');
+    for (const r of await db.all(`
+      SELECT sale_items.sale_id, sale_items.quantity, piece_types.label
+      FROM sale_items JOIN piece_types ON piece_types.id = sale_items.piece_type_id
+      WHERE sale_items.sale_id IN (${ph})`, holdIds)) (itemsBySale[r.sale_id] ||= []).push(r);
+    for (const r of await db.all(`
+      SELECT piece_orders.*, piece_types.label
+      FROM piece_orders JOIN piece_types ON piece_types.id = piece_orders.piece_type_id
+      WHERE piece_orders.sale_id IN (${ph})`, holdIds)) (ordersBySale[r.sale_id] ||= []).push(r);
+  }
+
+  // All open piece orders (deposit or not) — Orders lives on this page now.
+  const openOrders = await db.all(`
+    SELECT piece_orders.*, piece_types.label, piece_types.full_sku, products.sku, products.color,
+           sales.customer_name, sales.date AS sale_date, COALESCE(sales.is_deposit_hold, 0) AS sale_is_hold
+    FROM piece_orders
+    JOIN piece_types ON piece_types.id = piece_orders.piece_type_id
+    JOIN products ON products.id = piece_types.product_id
+    LEFT JOIN sales ON sales.id = piece_orders.sale_id
+    WHERE piece_orders.status = 'open'
+    ORDER BY piece_orders.created_at ASC
   `);
 
   const body = `
-  <h1 class="mt0">Deposits</h1>
+  <h1 class="mt0">Deposits &amp; Orders</h1>
   ${notice ? `<div class="notice ${notice.bad ? 'bad' : ''}">${esc(notice.text)}</div>` : ''}
-  <p class="muted">Couches with money down but not delivered/paid in full yet. Their pieces are already held — inventory and the website show them as gone. Completing a deposit is what counts it as money made.</p>
-  ${holds.length === 0 ? `<div class="card"><p class="muted" style="margin:0;">No open deposits right now. When you log a sale with "Deposit — pay on delivery", it shows up here.</p></div>` : ''}
+  <div class="stat-grid">
+    <div class="stat-card ${owed > 0 ? 'warn' : ''}"><div class="label">💰 Owed to us from deposits</div><div class="value">${money(owed)}</div><div class="small muted">${holds.length} open deposit${holds.length === 1 ? '' : 's'}</div></div>
+    <div class="stat-card ${openOrders.length ? 'warn' : ''}"><div class="label">📋 Pieces on order</div><div class="value">${openOrders.reduce((n, o) => n + o.quantity, 0)}</div><div class="small muted">${openOrders.length} open order line${openOrders.length === 1 ? '' : 's'}</div></div>
+  </div>
+  ${holds.length === 0 ? `<div class="card"><p class="muted" style="margin:0;">No open deposits. When you log a sale with "Deposit — pay on delivery", it shows up here.</p></div>` : ''}
   ${holds.map(s => {
     const total = (s.base_price || 0) + (s.delivery_fee || 0) + (s.assembly_fee || 0);
     const balance = total - (s.deposit_amount || 0);
     const days = Math.max(0, Math.round((Date.now() - new Date(s.date).getTime()) / 86400000));
+    const held = itemsBySale[s.id] || [];
+    const shorts = ordersBySale[s.id] || [];
     return `
     <div class="card" style="border-left:4px solid #e0a93e;">
       <div class="section-actions">
-        <strong>${esc(s.sku || '?')} ${s.color ? '— ' + esc(colorName(s.color)) : ''}</strong>
-        <span class="pill warn">held ${days} day${days === 1 ? '' : 's'}</span>
+        <strong>Sale #${s.id} — ${esc(s.sku || '?')} ${s.color ? '— ' + esc(colorName(s.color)) : ''}${s.customer_name ? ` · ${esc(s.customer_name)}` : ''}</strong>
+        <span>${s.delivery_date ? `<span class="pill good">🚚 delivering ${esc(s.delivery_date)}</span>` : `<span class="pill bad">no delivery date yet</span>`} <span class="pill warn">held ${days} day${days === 1 ? '' : 's'}</span></span>
       </div>
       <table style="margin-top:.5rem;">
         <tbody>
-          <tr><td data-label="">Customer</td><td data-label="Customer">${esc(s.customer_name || '—')}${s.customer_phone ? ` · <a href="tel:${esc(s.customer_phone)}">${esc(s.customer_phone)}</a>` : ''}</td></tr>
-          <tr><td data-label="">Deposit taken</td><td data-label="Deposit">${money(s.deposit_amount || 0)} on ${esc(s.date)}</td></tr>
+          <tr><td data-label="">Deposit taken</td><td data-label="Deposit">${money(s.deposit_amount || 0)} on ${esc(s.date)} by ${esc(s.entered_by || '—')}</td></tr>
           <tr><td data-label="">Agreed total</td><td data-label="Total">${money(total)} (${s.pieces_total ?? '?'} pieces)</td></tr>
           <tr><td data-label="">Due on delivery</td><td data-label="Due"><strong>${money(balance)}</strong></td></tr>
+          <tr><td data-label="">Pickup/delivery location</td><td data-label="Location">${esc(s.delivery_location || '—')}</td></tr>
+          <tr><td data-label="">Pieces</td><td data-label="Pieces">${held.map(h => `${h.quantity}× ${esc(h.label)} <span class="pill good">held</span>`).join(', ') || '—'}${shorts.length ? '<br>' + shorts.map(o => `${o.quantity}× ${esc(o.label)} <span class="pill ${o.status === 'open' ? 'warn' : 'good'}">${o.status === 'open' ? (o.fulfillment === 'order' ? `ordering — ${money(o.unit_cost)}/box` : 'waiting on next trip') : 'in'}</span>`).join(', ') : ''}</td></tr>
         </tbody>
       </table>
+      <form method="post" action="/deposits/${s.id}/update" style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin:.7rem 0 0;">
+        <label class="field-label" style="margin:0;">Delivering:</label>
+        <input type="date" name="delivery_date" value="${esc(s.delivery_date || '')}" style="width:auto;">
+        <button type="submit" class="btn" style="padding:.5rem .9rem;background:var(--line);color:var(--ink);">Set date</button>
+      </form>
       <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.7rem;">
         <a class="btn" href="/deposits/${s.id}/complete" style="display:inline-block;text-decoration:none;">✅ Delivered &amp; paid — complete sale</a>
         <form method="post" action="/deposits/${s.id}/cancel" onsubmit="return confirm('Cancel this deposit? The pieces go back into stock and the website will show them available again.');" style="margin:0;">
           <button type="submit" class="btn" style="background:#fbe7e7;color:var(--bad);border:1px solid #f0bcbc;">Cancel &amp; restock</button>
         </form>
       </div>
+      <details style="margin-top:.7rem;">
+        <summary style="cursor:pointer;font-weight:600;color:var(--muted, #777);">✏️ Edit everything on this deposit</summary>
+        <form method="post" action="/deposits/${s.id}/update" style="margin-top:.6rem;">
+          <div class="field-block"><label class="field-label">Customer name</label><input type="text" name="customer_name" value="${esc(s.customer_name || '')}"></div>
+          <div class="field-block"><label class="field-label">Location of pickup/delivery</label><input type="text" name="delivery_location" value="${esc(s.delivery_location || '')}"></div>
+          <div class="field-block"><label class="field-label">Delivery date</label><input type="date" name="delivery_date" value="${esc(s.delivery_date || '')}"></div>
+          <div class="field-block"><label class="field-label">Deposit taken date</label><input type="date" name="date" value="${esc(s.date)}"></div>
+          <div class="field-block"><label class="field-label">Couch price ($)</label><input type="number" name="base_price" min="0" step="1" inputmode="numeric" value="${s.base_price}"></div>
+          <div class="field-block">
+            <label class="field-label">Delivery fee ($)</label>
+            <input type="number" name="delivery_fee" min="0" step="1" inputmode="numeric" value="${s.delivery_fee || 0}">
+            ${buttonGroup(`delivery_by_${s.id}`, [{ value: '', label: 'No delivery' }, 'Dawson', 'Grant', 'Both'], { selected: s.delivery_by || '' }).replace(new RegExp(`name="delivery_by_${s.id}"`, 'g'), 'name="delivery_by"')}
+          </div>
+          <div class="field-block">
+            <label class="field-label">Assembly fee ($)</label>
+            <input type="number" name="assembly_fee" min="0" step="1" inputmode="numeric" value="${s.assembly_fee || 0}">
+            ${buttonGroup(`assembly_by_${s.id}`, [{ value: '', label: 'No assembly' }, 'Dawson', 'Grant', 'Both'], { selected: s.assembly_by || '' }).replace(new RegExp(`name="assembly_by_${s.id}"`, 'g'), 'name="assembly_by"')}
+          </div>
+          <div class="field-block"><label class="field-label">Deposit amount ($)</label><input type="number" name="deposit_amount" min="0" step="1" inputmode="numeric" value="${s.deposit_amount || 0}"></div>
+          <div class="field-block"><label class="field-label">Notes</label><input type="text" name="notes" value="${esc(s.notes || '')}"></div>
+          <button type="submit" class="big-submit">Save changes</button>
+        </form>
+      </details>
     </div>`;
   }).join('')}
+
+  <h2>📋 Pieces on order</h2>
+  <div class="card">
+    ${openOrders.length ? `
+    <table>
+      <thead><tr><th>Piece</th><th>Qty</th><th>How</th><th>For</th><th></th></tr></thead>
+      <tbody>${openOrders.map(r => `
+        <tr>
+          <td data-label="Piece"><span class="swatch-dot" style="background:${colorSwatch(r.color)}"></span>${esc(r.sku)} — ${esc(r.label)} <span class="small muted">${esc(r.full_sku)}</span></td>
+          <td data-label="Qty">${r.quantity}</td>
+          <td data-label="How">${r.fulfillment === 'order' ? `📦 Ordering — ${money(r.unit_cost)}/box shipped` : '🚚 Waiting on next trip'}</td>
+          <td data-label="For">${r.sale_id ? `Sale #${r.sale_id}${r.customer_name ? ' — ' + esc(r.customer_name) : ''}${r.sale_is_hold ? ' <span class="pill warn">deposit</span>' : ''} <span class="small muted">${esc(r.sale_date || '')}</span>` : '—'}</td>
+          <td data-label="">
+            <form method="post" action="/orders/${r.id}/fulfill" style="margin:0;display:inline;">
+              <button type="submit" class="btn" style="padding:.45rem .8rem;font-size:.92rem;">Got it ✓</button>
+            </form>
+          </td>
+        </tr>`).join('')}</tbody>
+    </table>
+    <p class="small muted" style="margin-bottom:0;">"Got it ✓": ordered pieces log their real ${money(ORDER_PIECE_COST_SHIPPED)}/box cost automatically; next-trip pieces come out of stock (log the trip's boxes in first).</p>
+    ` : `<p class="muted small" style="margin:0;">Nothing on order — you're covered.</p>`}
+  </div>
   `;
-  sendHtml(res, 200, layout({ title: 'Deposits', user, active: '/deposits', body, wide: true }));
+  sendHtml(res, 200, layout({ title: 'Deposits & Orders', user, active: '/deposits', body, wide: true }));
+}
+
+// Partial update: only fields present in the form change; everything else
+// keeps its saved value (lets the quick "set date" form and the full edit
+// form share one endpoint).
+async function handleDepositUpdate(req, res, user, saleId) {
+  const sale = await db.get(`SELECT * FROM sales WHERE id = ? AND COALESCE(is_deposit_hold,0) = 1`, [saleId]);
+  if (!sale) return redirect(res, '/deposits');
+  const form = await readForm(req);
+  const pick = (key, fallback, num) => {
+    if (!(key in form)) return fallback;
+    if (num) return parseFloat(form[key] || '0');
+    return form[key] === '' ? null : form[key];
+  };
+  await db.run(`
+    UPDATE sales SET date = ?, customer_name = ?, delivery_location = ?, delivery_date = ?,
+      base_price = ?, delivery_fee = ?, delivery_by = ?, assembly_fee = ?, assembly_by = ?,
+      deposit_amount = ?, notes = ? WHERE id = ?
+  `, [
+    pick('date', sale.date) || sale.date,
+    pick('customer_name', sale.customer_name),
+    pick('delivery_location', sale.delivery_location),
+    pick('delivery_date', sale.delivery_date),
+    pick('base_price', sale.base_price, true),
+    pick('delivery_fee', sale.delivery_fee, true),
+    'delivery_by' in form ? (form.delivery_by || null) : sale.delivery_by,
+    pick('assembly_fee', sale.assembly_fee, true),
+    'assembly_by' in form ? (form.assembly_by || null) : sale.assembly_by,
+    pick('deposit_amount', sale.deposit_amount, true),
+    pick('notes', sale.notes),
+    saleId,
+  ]);
+  await handleDeposits(req, res, user, { text: `Sale #${saleId} updated.` });
 }
 
 async function handleDepositCompleteGet(req, res, user, saleId) {
@@ -1481,7 +1663,7 @@ async function handleDepositCompleteGet(req, res, user, saleId) {
   <h1 class="mt0">Complete sale — ${esc(sale.sku || '')}${sale.customer_name ? ` for ${esc(sale.customer_name)}` : ''}</h1>
   <p class="muted">Deposit of <strong>${money(sale.deposit_amount || 0)}</strong> already in hand — <strong>${money(total - (sale.deposit_amount || 0))}</strong> to collect now (it's part of the same ${money(total)} total, not extra). Adjust anything that changed, then complete it.</p>
   <form method="post" action="/deposits/${saleId}/complete">
-    <div class="field-block"><label class="field-label">Delivery / completion date</label><input type="date" name="date" value="${today()}" required></div>
+    <div class="field-block"><label class="field-label">Delivery / completion date</label><input type="date" name="date" value="${esc(sale.delivery_date || today())}" required></div>
     <div class="field-block"><label class="field-label">Base price ($)</label><input type="number" name="base_price" min="0" step="1" required inputmode="numeric" value="${sale.base_price}"></div>
     <div class="field-block">
       <label class="field-label">Delivery fee ($)</label>
@@ -1557,55 +1739,6 @@ async function handleDepositCancel(req, res, user, saleId) {
 // (~$215/box shipped) or waiting on the next trip. Marking one done records
 // the cost correctly without double-counting inventory.
 // =============================================================================
-async function handleOrders(req, res, user, notice) {
-  const rows = await db.all(`
-    SELECT piece_orders.*, piece_types.label, piece_types.full_sku, products.sku, products.color,
-           sales.customer_name, sales.date AS sale_date, COALESCE(sales.is_deposit_hold, 0) AS sale_is_hold
-    FROM piece_orders
-    JOIN piece_types ON piece_types.id = piece_orders.piece_type_id
-    JOIN products ON products.id = piece_types.product_id
-    LEFT JOIN sales ON sales.id = piece_orders.sale_id
-    ORDER BY piece_orders.status ASC, piece_orders.created_at DESC
-  `);
-  const open = rows.filter(r => r.status === 'open');
-  const done = rows.filter(r => r.status !== 'open').slice(0, 30);
-
-  const renderRow = r => `
-    <tr>
-      <td data-label="Piece"><span class="swatch-dot" style="background:${colorSwatch(r.color)}"></span>${esc(r.sku)} — ${esc(r.label)} <span class="small muted">${esc(r.full_sku)}</span></td>
-      <td data-label="Qty">${r.quantity}</td>
-      <td data-label="How">${r.fulfillment === 'order' ? `📦 Ordering — ${money(r.unit_cost)}/box shipped` : '🚚 Next trip'}</td>
-      <td data-label="For">${r.sale_id ? `Sale #${r.sale_id}${r.customer_name ? ' — ' + esc(r.customer_name) : ''}${r.sale_is_hold ? ' <span class="pill warn">deposit</span>' : ''} <span class="small muted">${esc(r.sale_date || '')}</span>` : '—'}</td>
-      <td data-label="">${r.status === 'open' ? `
-        <form method="post" action="/orders/${r.id}/fulfill" style="margin:0;display:inline;">
-          <button type="submit" class="btn" style="padding:.45rem .8rem;font-size:.92rem;">Got it ✓</button>
-        </form>` : `<span class="pill good">done ${esc((r.fulfilled_at || '').slice(0, 10))}</span>`}</td>
-    </tr>`;
-
-  const body = `
-  <h1 class="mt0">Orders</h1>
-  ${notice ? `<div class="notice ${notice.bad ? 'bad' : ''}">${esc(notice.text)}</div>` : ''}
-  <p class="muted">Pieces that were sold before they were in stock. "Got it ✓" closes one out: ordered pieces record their real ${money(ORDER_PIECE_COST_SHIPPED)}/box cost automatically; next-trip pieces come out of stock (log the trip's boxes in first so the counts stay honest).</p>
-  <div class="card">
-    <strong>Open (${open.length})</strong>
-    ${open.length ? `
-    <table style="margin-top:.6rem;">
-      <thead><tr><th>Piece</th><th>Qty</th><th>How</th><th>For</th><th></th></tr></thead>
-      <tbody>${open.map(renderRow).join('')}</tbody>
-    </table>` : `<p class="muted small" style="margin-bottom:0;">Nothing on order — you're covered.</p>`}
-  </div>
-  ${done.length ? `
-  <div class="card">
-    <strong>Recently completed</strong>
-    <table style="margin-top:.6rem;">
-      <thead><tr><th>Piece</th><th>Qty</th><th>How</th><th>For</th><th></th></tr></thead>
-      <tbody>${done.map(renderRow).join('')}</tbody>
-    </table>
-  </div>` : ''}
-  `;
-  sendHtml(res, 200, layout({ title: 'Orders', user, active: '/orders', body, wide: true }));
-}
-
 async function handleOrderFulfill(req, res, user, orderId) {
   const order = await db.get(`SELECT * FROM piece_orders WHERE id = ? AND status = 'open'`, [orderId]);
   if (!order) return redirect(res, '/orders');
@@ -1628,7 +1761,7 @@ async function handleOrderFulfill(req, res, user, orderId) {
   }
   await db.run(`UPDATE piece_orders SET status = 'fulfilled', fulfilled_at = ? WHERE id = ?`, [new Date().toISOString(), orderId]);
   syncShowroomInventory().catch(() => {});
-  await handleOrders(req, res, user, { text: order.fulfillment === 'order'
+  await handleDeposits(req, res, user, { text: order.fulfillment === 'order'
     ? `Done — ${order.quantity} box(es) logged at ${money(order.unit_cost)}/box so the profit math stays right.`
     : `Done — ${order.quantity} box(es) taken out of stock for the customer.` });
 }
@@ -1813,7 +1946,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/trips' && req.method === 'POST') return await handleTripsPost(req, res, user);
     if (pathname === '/sales' && req.method === 'GET') return await handleSalesHistory(req, res, user);
     if (pathname === '/deposits' && req.method === 'GET') return await handleDeposits(req, res, user);
-    if (pathname === '/orders' && req.method === 'GET') return await handleOrders(req, res, user);
+    if (pathname === '/orders' && req.method === 'GET') return redirect(res, '/deposits'); // Orders lives on the Deposits page now
     if (pathname === '/stats' && req.method === 'GET') return redirect(res, '/dashboard'); // Stats lives on the Dashboard now
     if (pathname === '/backup' && req.method === 'GET') return await handleBackup(req, res, user);
 
@@ -1833,6 +1966,7 @@ const server = http.createServer(async (req, res) => {
     if ((m = pathname.match(/^\/deposits\/(\d+)\/complete$/)) && req.method === 'GET') return await handleDepositCompleteGet(req, res, user, parseInt(m[1], 10));
     if ((m = pathname.match(/^\/deposits\/(\d+)\/complete$/)) && req.method === 'POST') return await handleDepositCompletePost(req, res, user, parseInt(m[1], 10));
     if ((m = pathname.match(/^\/deposits\/(\d+)\/cancel$/)) && req.method === 'POST') return await handleDepositCancel(req, res, user, parseInt(m[1], 10));
+    if ((m = pathname.match(/^\/deposits\/(\d+)\/update$/)) && req.method === 'POST') return await handleDepositUpdate(req, res, user, parseInt(m[1], 10));
     if ((m = pathname.match(/^\/orders\/(\d+)\/fulfill$/)) && req.method === 'POST') return await handleOrderFulfill(req, res, user, parseInt(m[1], 10));
 
     res.writeHead(404, { 'Content-Type': 'text/plain' });
