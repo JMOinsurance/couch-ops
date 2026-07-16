@@ -1399,12 +1399,14 @@ async function handleSalesHistory(req, res, user) {
 
   const body = `
   <h1 class="mt0">Sales history</h1>
+  <p class="muted" style="margin-top:0;">${rows.length ? `Latest is <strong>sale #${rows[0].id}</strong> — the next one logged will be #${rows[0].id + 1}.` : ''}</p>
   <input type="text" class="search-box" id="sales-search" placeholder="Search — SKU, color, who logged it...">
   <table id="sales-table">
-    <thead><tr><th>Date</th><th>Product</th><th>Pieces</th><th>Total</th><th>Status</th><th>Logged by</th><th></th></tr></thead>
+    <thead><tr><th>#</th><th>Date</th><th>Product</th><th>Pieces</th><th>Total</th><th>Status</th><th>Logged by</th><th></th></tr></thead>
     <tbody>
       ${rows.map(r => `
-        <tr data-idx="${r.id}" data-terms="${esc((r.sku + ' ' + r.colorName + ' ' + r.enteredBy).toLowerCase())}">
+        <tr data-idx="${r.id}" data-terms="${esc((('#' + r.id) + ' ' + r.sku + ' ' + r.colorName + ' ' + r.enteredBy).toLowerCase())}">
+          <td data-label="#"><strong>#${r.id}</strong></td>
           <td data-label="Date">${esc(r.date)}</td>
           <td data-label="Product">${esc(r.sku)} ${r.colorName ? '— ' + esc(r.colorName) : ''}</td>
           <td data-label="Pieces">${r.pieces ?? '—'}</td>
