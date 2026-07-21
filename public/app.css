@@ -139,6 +139,33 @@ form.inline-form { margin: 0; }
 .big-submit { display: block; width: 100%; padding: 1.1rem; font-size: 1.25rem; font-weight: 800; border-radius: 14px; margin-top: 1rem; }
 .back-link { display: inline-block; margin-bottom: 1rem; color: var(--muted); text-decoration: none; font-size: .9rem; }
 
+/* --- inventory page total --- */
+.inv-total-grid { margin-bottom: 1.25rem; }
+
+/* --- post-sale celebration screen --- */
+.confetti-container { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 999; }
+.confetti-piece {
+  position: absolute; top: -6vh; width: 9px; height: 14px; border-radius: 2px; opacity: .95;
+  animation-name: confetti-fall; animation-timing-function: cubic-bezier(.35,0,.65,1); animation-fill-mode: forwards;
+}
+.confetti-emoji { width: auto; height: auto; background: none !important; line-height: 1; }
+@keyframes confetti-fall {
+  0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(112vh) rotate(600deg); opacity: .25; }
+}
+
+.sale-celebrate { text-align: center; }
+.sale-celebrate-headline { font-size: 1.9rem; font-weight: 800; margin: .4rem 0 .2rem; animation: pop-in .45s cubic-bezier(.34,1.56,.64,1); }
+.sale-celebrate-sub { color: var(--muted); margin-bottom: 1.1rem; font-size: .92rem; }
+.celebrate-card {
+  background: linear-gradient(135deg,#e3f5ec,#d3f0e0); border: 1px solid #b9e3cc; border-radius: 18px;
+  padding: 1.5rem 1rem; margin: 0 0 1.25rem; animation: pop-in .5s cubic-bezier(.34,1.56,.64,1);
+}
+.celebrate-card .label { font-size: .85rem; color: var(--good); text-transform: uppercase; letter-spacing: .03em; font-weight: 700; }
+.celebrate-card .value { font-size: 2.8rem; font-weight: 900; color: var(--good); margin: .3rem 0; line-height: 1.1; }
+@keyframes pop-in { 0% { transform: scale(.7); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+.stat-card .value.counting-up, .stat-card .value.counting-down { font-variant-numeric: tabular-nums; }
+
 @media (max-width: 640px) {
   table, thead, tbody, th, td, tr { display: block; }
   thead { display: none; }

@@ -62,3 +62,13 @@ export async function totalOnHandForProduct(productId) {
   `, [productId]);
   return row.s;
 }
+
+/** Every piece, everywhere, added up — the "total inventory" number for
+ * the top of the Inventory page and for the post-sale celebration screen. */
+export async function totalInventoryCount() {
+  const row = await db.get(`SELECT COALESCE(SUM(quantity), 0) s FROM inventory`);
+  const byLocationRows = await db.all(`SELECT location, COALESCE(SUM(quantity),0) s FROM inventory GROUP BY location`);
+  const byLocation = { Dawson: 0, Grant: 0 };
+  for (const r of byLocationRows) byLocation[r.location] = r.s;
+  return { total: row.s, byLocation };
+}

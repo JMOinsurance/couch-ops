@@ -8,7 +8,7 @@ import { db } from './db.js';
 import { ensureUser, findUserByName, createSession, getSessionUser, destroySession, parseCookies } from './auth.js';
 import { layout, loginPage, esc, money } from './views.js';
 import { allProductsAvailability } from './configurator.js';
-import { piecesForProduct, presetsForProduct, presetById, totalOnHandForProduct } from './sale-logic.js';
+import { piecesForProduct, presetsForProduct, presetById, totalOnHandForProduct, totalInventoryCount } from './sale-logic.js';
 import { activeProductSummaries } from './product-summary.js';
 import { colorName, colorSwatch, colorTint } from './colors.js';
 import { suggestedPrice } from './pricing.js';
@@ -674,22 +674,95 @@ async function handleSaleSubmit(req, res, user, productId) {
   const saleProfitEstimate = basePriceNum - saleCostBasis;
   const allTimeProfit = (await profitSummary()).totalProfit;
   const profitDelta = allTimeProfit - priorProfit;
+  const inventoryAfter = await totalInventoryCount();
+  const inventoryBeforeTotal = inventoryAfter.total + piecesTotal;
 
   const body = `
-    <div class="notice" style="background:#e3f5ec;border-color:#b9e3cc;color:#0f5c3d;">
-      <strong>💰 Sale #${saleId} logged.</strong> ${product.sku} — ${money(basePriceNum)} base${deliveryFeeNum > 0 ? `, plus ${money(deliveryFeeNum)} delivery ${whoLabel(form.delivery_by)}` : ''}${assemblyFeeNum > 0 ? `, plus ${money(assemblyFeeNum)} assembly ${whoLabel(form.assembly_by)}` : ''}. Inventory updated automatically.
-      ${form.save_preset_name && form.save_preset_name.trim() ? `<br>Saved as a new preset: "${esc(form.save_preset_name.trim())}" — it'll show up as a button next time.` : ''}
+    <div id="confetti-container" class="confetti-container"></div>
+    <div class="sale-celebrate">
+      <div class="sale-celebrate-headline">💰 Sale #${saleId} logged!</div>
+      <div class="sale-celebrate-sub">
+        ${product.sku} — ${money(basePriceNum)} base${deliveryFeeNum > 0 ? `, plus ${money(deliveryFeeNum)} delivery ${whoLabel(form.delivery_by)}` : ''}${assemblyFeeNum > 0 ? `, plus ${money(assemblyFeeNum)} assembly ${whoLabel(form.assembly_by)}` : ''}
+        ${form.save_preset_name && form.save_preset_name.trim() ? `<br>Saved as a new preset: "${esc(form.save_preset_name.trim())}" — it'll show up as a button next time.` : ''}
+      </div>
+
+      <div class="celebrate-card">
+        <div class="label">🛋️ Profit on this couch</div>
+        <div class="value" id="thisCouchProfit">$0</div>
+        <div class="small muted">${money(basePriceNum)} sale − est. cost ${money(saleCostBasis)} (${piecesTotal} pc × ${money(costRate)}/box)</div>
+      </div>
+
+      ${ordersNote}
+      <div class="stat-grid">
+        <div class="stat-card good"><div class="label">💵 Dawson made</div><div class="value">${money(earnings.Dawson)}</div></div>
+        <div class="stat-card good"><div class="label">💵 Grant made</div><div class="value">${money(earnings.Grant)}</div></div>
+        <div class="stat-card good">
+          <div class="label">📈 All-time profit</div>
+          <div class="value counting-up" id="allTimeProfit">${money(priorProfit)}</div>
+          <div class="small muted">⬆ up ${money(profitDelta)} from this sale</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">📦 Inventory on hand</div>
+          <div class="value counting-down" id="invCount">${inventoryBeforeTotal}</div>
+          <div class="small muted">⬇ down ${piecesTotal} pc from this sale</div>
+        </div>
+      </div>
+      ${inventoryChangeCard(changes, location)}
+      ${await latestTripCard()}
+      <a href="/" class="btn big-submit" style="display:inline-block;text-decoration:none;">Log another sale</a>
     </div>
-    ${ordersNote}
-    <div class="stat-grid">
-      <div class="stat-card good"><div class="label">💵 Dawson made</div><div class="value">${money(earnings.Dawson)}</div></div>
-      <div class="stat-card good"><div class="label">💵 Grant made</div><div class="value">${money(earnings.Grant)}</div></div>
-      <div class="stat-card good"><div class="label">🛋️ Profit on this couch</div><div class="value">${money(saleProfitEstimate)}</div><div class="small muted">${money(basePriceNum)} sale − est. cost ${money(saleCostBasis)} (${piecesTotal} pc × ${money(costRate)}/box)</div></div>
-      <div class="stat-card good"><div class="label">📈 All-time profit now</div><div class="value">${money(allTimeProfit)}</div><div class="small muted">⬆ up ${money(profitDelta)} from this sale</div></div>
-    </div>
-    ${inventoryChangeCard(changes, location)}
-    ${await latestTripCard()}
-    <a href="/" class="btn" style="display:inline-block;text-decoration:none;">Log another sale</a>
+
+    <script>
+    (function () {
+      // --- confetti / cash burst ---
+      var emojis = ['💵', '💰', '🤑', '🎉'];
+      var colors = ['#2b6cb0', '#1a7f5a', '#b45309', '#b02a2a', '#e0b400'];
+      var container = document.getElementById('confetti-container');
+      var pieceCount = 70;
+      for (var i = 0; i < pieceCount; i++) {
+        var el = document.createElement('span');
+        var isEmoji = Math.random() < 0.35;
+        el.className = 'confetti-piece' + (isEmoji ? ' confetti-emoji' : '');
+        if (isEmoji) {
+          el.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+          el.style.fontSize = (1 + Math.random() * 1.1) + 'rem';
+        } else {
+          el.style.background = colors[Math.floor(Math.random() * colors.length)];
+        }
+        el.style.left = (Math.random() * 100) + 'vw';
+        el.style.animationDelay = (Math.random() * 0.5) + 's';
+        el.style.animationDuration = (2 + Math.random() * 1.5) + 's';
+        container.appendChild(el);
+      }
+      setTimeout(function () { container.remove(); }, 4000);
+
+      // --- animated counters ---
+      function animateNumber(el, start, end, opts) {
+        opts = opts || {};
+        var duration = opts.duration || 1200;
+        var isMoney = !!opts.money;
+        var t0 = null;
+        function fmt(v) {
+          v = Math.round(v);
+          return isMoney
+            ? v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+            : v.toLocaleString('en-US');
+        }
+        function tick(now) {
+          if (t0 === null) t0 = now;
+          var p = Math.min(1, (now - t0) / duration);
+          var eased = 1 - Math.pow(1 - p, 3);
+          el.textContent = fmt(start + (end - start) * eased);
+          if (p < 1) requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      }
+
+      animateNumber(document.getElementById('thisCouchProfit'), 0, ${saleProfitEstimate}, { money: true, duration: 900 });
+      animateNumber(document.getElementById('allTimeProfit'), ${priorProfit}, ${allTimeProfit}, { money: true, duration: 1400 });
+      animateNumber(document.getElementById('invCount'), ${inventoryBeforeTotal}, ${inventoryAfter.total}, { duration: 1400 });
+    })();
+    </script>
   `;
   sendHtml(res, 200, layout({ title: 'Sale logged', user, active: '/', body }));
 }
@@ -708,8 +781,22 @@ async function handleInventory(req, res, user) {
     id: product.id, sku: product.sku.toLowerCase(), color: product.colorName.toLowerCase(), code: product.color.toLowerCase(),
   }));
 
+  let totalDawson = 0, totalGrant = 0;
+  for (const { pieces } of productBlocks) {
+    for (const pt of pieces) {
+      totalDawson += pt.byLocation.Dawson;
+      totalGrant += pt.byLocation.Grant;
+    }
+  }
+  const totalAll = totalDawson + totalGrant;
+
   const body = `
   <h1 class="mt0">Inventory</h1>
+  <div class="stat-grid inv-total-grid">
+    <div class="stat-card good"><div class="label">📦 Total inventory</div><div class="value">${totalAll}</div></div>
+    <div class="stat-card"><div class="label">Dawson has</div><div class="value">${totalDawson}</div></div>
+    <div class="stat-card"><div class="label">Grant has</div><div class="value">${totalGrant}</div></div>
+  </div>
   <input type="text" class="search-box" id="inv-search" placeholder="Search — e.g. &quot;120BE&quot; or &quot;Beige&quot;">
 
   ${productBlocks.map(({ product, pieces }) => `
