@@ -676,6 +676,8 @@ async function handleSaleSubmit(req, res, user, productId) {
   const profitDelta = allTimeProfit - priorProfit;
   const inventoryAfter = await totalInventoryCount();
   const inventoryBeforeTotal = inventoryAfter.total + piecesTotal;
+  const sevenDaysAgoDate = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const last7DaysCount = (await db.get(`SELECT COUNT(*) c FROM sales WHERE date >= ? AND COALESCE(is_deposit_hold,0) = 0`, [sevenDaysAgoDate])).c;
 
   const body = `
     <div id="confetti-container" class="confetti-container"></div>
@@ -706,6 +708,7 @@ async function handleSaleSubmit(req, res, user, productId) {
           <div class="value counting-down" id="invCount">${inventoryBeforeTotal}</div>
           <div class="small muted">⬇ down ${piecesTotal} pc from this sale</div>
         </div>
+        <div class="stat-card"><div class="label">🗓️ Sales, last 7 days</div><div class="value">${last7DaysCount}</div></div>
       </div>
       ${inventoryChangeCard(changes, location)}
       ${await latestTripCard()}
@@ -794,8 +797,8 @@ async function handleInventory(req, res, user) {
   <h1 class="mt0">Inventory</h1>
   <div class="stat-grid inv-total-grid">
     <div class="stat-card good"><div class="label">📦 Total inventory</div><div class="value">${totalAll}</div></div>
-    <div class="stat-card"><div class="label">Dawson has</div><div class="value">${totalDawson}</div></div>
-    <div class="stat-card"><div class="label">Grant has</div><div class="value">${totalGrant}</div></div>
+    <a class="stat-card" href="/inventory/location/Dawson" style="text-decoration:none;color:inherit;display:block;"><div class="label">Dawson has &rarr;</div><div class="value">${totalDawson}</div></a>
+    <a class="stat-card" href="/inventory/location/Grant" style="text-decoration:none;color:inherit;display:block;"><div class="label">Grant has &rarr;</div><div class="value">${totalGrant}</div></a>
   </div>
   <input type="text" class="search-box" id="inv-search" placeholder="Search — e.g. &quot;120BE&quot; or &quot;Beige&quot;">
 
@@ -934,6 +937,101 @@ async function handleAdjustInventoryPost(req, res, user, productId) {
 }
 
 // =============================================================================
+// INVENTORY BY LOCATION — a single, spreadsheet-style, editable list of every
+// piece one partner has, in product/piece order (e.g. 120BE-1, 120BE-2, ...,
+// 120GY-1, ...). Reached by tapping "Dawson has" / "Grant has" on the
+// Inventory page. Different from Adjust Inventory (per-product, both
+// locations at once) — this is per-person, every product, one page.
+// =============================================================================
+async function handleInventoryLocationGet(req, res, user, location) {
+  const products = await activeProductSummaries({ includeInactive: true });
+  const rows = [];
+  for (const product of products) {
+    for (const pt of product.pieces) {
+      rows.push({ product, pt });
+    }
+  }
+  const total = rows.reduce((sum, r) => sum + (r.pt.byLocation[location] || 0), 0);
+
+  const body = `
+  <a class="back-link" href="/inventory">&larr; Back to inventory</a>
+  <h1 class="mt0">${esc(location)}'s inventory</h1>
+  <p class="muted">Every piece ${esc(location)} has, in product order. Edit any count and save — this updates ${esc(location)}'s stock directly, the same as Correct Counts.</p>
+  <div class="stat-grid" style="margin-bottom:1rem;">
+    <div class="stat-card good"><div class="label">📦 ${esc(location)} has</div><div class="value" id="loc-total">${total}</div></div>
+  </div>
+  <input type="text" class="search-box" id="loc-search" placeholder="Search — e.g. &quot;120BE&quot; or &quot;Beige&quot;">
+  <form method="post" action="/inventory/location/${esc(location)}">
+    <table id="loc-table">
+      <thead><tr><th>Product</th><th>Piece</th><th style="width:110px;">${esc(location)} has</th></tr></thead>
+      <tbody>
+        ${rows.map(({ product, pt }) => `
+          <tr data-sku="${esc(product.sku.toLowerCase())}" data-color="${esc(product.colorSearchTerms)}">
+            <td data-label="Product"><span class="swatch-dot" style="background:${colorSwatch(product.color)}"></span>${esc(product.sku)} — ${esc(product.colorName)}</td>
+            <td data-label="Piece">${esc(pt.label)} <span class="small muted">${esc(pt.full_sku)}</span></td>
+            <td data-label="${esc(location)} has"><input type="number" min="0" inputmode="numeric" class="loc-qty-input" data-orig="${pt.byLocation[location] || 0}" name="qty_${pt.id}" value="${pt.byLocation[location] || 0}" style="width:80px;padding:.4rem .5rem;font-size:1rem;border:2px solid var(--line);border-radius:8px;"></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    <p class="small muted" id="loc-no-results" style="display:none;">No products match that search.</p>
+    <button type="submit" class="big-submit">Save changes</button>
+  </form>
+  <script>
+    const search = document.getElementById('loc-search');
+    const noResults = document.getElementById('loc-no-results');
+    const rowsEls = Array.from(document.querySelectorAll('#loc-table tbody tr'));
+    search.addEventListener('input', () => {
+      const q = search.value.trim().toLowerCase();
+      let shown = 0;
+      rowsEls.forEach(row => {
+        const match = !q || row.dataset.sku.includes(q) || row.dataset.color.includes(q);
+        row.style.display = match ? '' : 'none';
+        if (match) shown++;
+      });
+      noResults.style.display = shown === 0 ? 'block' : 'none';
+    });
+    const totalEl = document.getElementById('loc-total');
+    const qtyInputs = Array.from(document.querySelectorAll('.loc-qty-input'));
+    function recalcTotal() {
+      let sum = 0;
+      qtyInputs.forEach(inp => { sum += parseInt(inp.value, 10) || 0; });
+      totalEl.textContent = sum;
+    }
+    qtyInputs.forEach(inp => inp.addEventListener('input', recalcTotal));
+  </script>
+  `;
+  sendHtml(res, 200, layout({ title: `${location}'s inventory`, user, active: '/inventory', body, wide: true }));
+}
+
+async function handleInventoryLocationPost(req, res, user, location) {
+  const form = await readForm(req);
+  const products = await activeProductSummaries({ includeInactive: true });
+  let changedCount = 0;
+  for (const product of products) {
+    for (const pt of product.pieces) {
+      const key = `qty_${pt.id}`;
+      if (!(key in form)) continue;
+      const qty = Math.max(0, parseInt(form[key] || '0', 10) || 0);
+      if (qty !== (pt.byLocation[location] || 0)) changedCount++;
+      await db.run(`
+        INSERT INTO inventory (piece_type_id, location, quantity) VALUES (?, ?, ?)
+        ON CONFLICT(piece_type_id, location) DO UPDATE SET quantity = excluded.quantity
+      `, [pt.id, location, qty]);
+    }
+  }
+  // Stock just changed — push fresh numbers to the public showroom now
+  // (fire-and-forget; the page never waits on GitHub, and any failure shows
+  // on the Dashboard's sync card).
+  syncShowroomInventory().catch(() => {});
+  const body = `
+    <div class="notice" style="background:#e3f5ec;border-color:#b9e3cc;color:#0f5c3d;"><strong>Saved.</strong> ${changedCount} count${changedCount === 1 ? '' : 's'} updated for ${esc(location)}.</div>
+    <a href="/inventory/location/${esc(location)}" class="btn" style="display:inline-block;text-decoration:none;margin-right:.5rem;">Back to ${esc(location)}'s list</a>
+    <a href="/inventory" class="btn" style="display:inline-block;text-decoration:none;background:var(--line);color:var(--ink);">Back to inventory</a>
+  `;
+  sendHtml(res, 200, layout({ title: 'Counts updated', user, active: '/inventory', body }));
+}
+
+// =============================================================================
 // DASHBOARD — money + trip stats first; the piece-count estimate is a
 // secondary, clearly-labeled estimate rather than the headline number.
 // =============================================================================
@@ -991,11 +1089,14 @@ async function handleDashboard(req, res, user, query) {
   </div>
 
   <div class="card">
-    <strong>📈 Net profit split, avg / month</strong>
-    <div class="stat-grid" style="margin-top:.6rem;margin-bottom:0;">
-      <div class="stat-card good"><div class="label">Dawson</div><div class="value">${money(profit.avgMonthlyProfitSplit.Dawson)}</div></div>
-      <div class="stat-card good"><div class="label">Grant</div><div class="value">${money(profit.avgMonthlyProfitSplit.Grant)}</div></div>
-    </div>
+    <strong>📈 Net profit split</strong>
+    <table style="margin-top:.6rem;">
+      <thead><tr><th>Partner</th><th>Avg / month</th><th>All-time</th></tr></thead>
+      <tbody>
+        <tr><td data-label="Partner">Dawson</td><td data-label="Avg / month">${money(profit.avgMonthlyProfitSplit.Dawson)}</td><td data-label="All-time" class="good-text">${money(profit.allTimeSplit.Dawson)}</td></tr>
+        <tr><td data-label="Partner">Grant</td><td data-label="Avg / month">${money(profit.avgMonthlyProfitSplit.Grant)}</td><td data-label="All-time" class="good-text">${money(profit.allTimeSplit.Grant)}</td></tr>
+      </tbody>
+    </table>
   </div>
 
   <div class="card">
@@ -2100,6 +2201,8 @@ const server = http.createServer(async (req, res) => {
     if ((m = pathname.match(/^\/inventory\/add\/(\d+)$/)) && req.method === 'POST') return await handleAddInventorySubmit(req, res, user, parseInt(m[1], 10));
     if ((m = pathname.match(/^\/inventory\/adjust\/(\d+)$/)) && req.method === 'GET') return await handleAdjustInventoryGet(req, res, user, parseInt(m[1], 10));
     if ((m = pathname.match(/^\/inventory\/adjust\/(\d+)$/)) && req.method === 'POST') return await handleAdjustInventoryPost(req, res, user, parseInt(m[1], 10));
+    if ((m = pathname.match(/^\/inventory\/location\/(Dawson|Grant)$/)) && req.method === 'GET') return await handleInventoryLocationGet(req, res, user, m[1]);
+    if ((m = pathname.match(/^\/inventory\/location\/(Dawson|Grant)$/)) && req.method === 'POST') return await handleInventoryLocationPost(req, res, user, m[1]);
     if ((m = pathname.match(/^\/trips\/(\d+)\/edit$/)) && req.method === 'GET') return await handleTripEditGet(req, res, user, parseInt(m[1], 10));
     if ((m = pathname.match(/^\/trips\/(\d+)\/edit$/)) && req.method === 'POST') return await handleTripEditPost(req, res, user, parseInt(m[1], 10));
     if ((m = pathname.match(/^\/sales\/(\d+)\/edit$/)) && req.method === 'GET') return await handleSaleEditGet(req, res, user, parseInt(m[1], 10));
